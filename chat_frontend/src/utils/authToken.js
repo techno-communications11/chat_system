@@ -62,6 +62,49 @@ export const getTokenPayload = () => {
   }
 };
 
+export const getTokenUser = () => {
+  const payload = getTokenPayload();
+
+  if (!payload) return null;
+
+  const id =
+    payload.id ||
+    payload.userId ||
+    payload.user_id ||
+    payload.appUserId ||
+    payload.sub ||
+    "";
+  const email =
+    payload.email ||
+    payload.userEmail ||
+    payload.user_email ||
+    payload.mail ||
+    payload.preferred_username ||
+    "";
+  const name =
+    payload.name ||
+    payload.displayName ||
+    payload.display_name ||
+    payload.username ||
+    email ||
+    String(id || "");
+
+  return {
+    ...payload,
+    id: String(id || ""),
+    userId: String(id || ""),
+    user_id: String(id || ""),
+    email,
+    email_id: email,
+    name,
+    displayName: name,
+    display_name: name,
+    username: payload.username || email || String(id || ""),
+    role: payload.role,
+    roles: payload.roles || (payload.role ? [payload.role] : []),
+  };
+};
+
 export const getTokenEmail = () => {
   const payload = getTokenPayload();
 

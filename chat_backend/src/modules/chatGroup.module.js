@@ -23,7 +23,7 @@ const ChatGroup = sequelize.define(
       allowNull: true,
     },
     ownerUserId: {
-      type: DataTypes.INTEGER,
+      type: DataTypes.STRING,
       allowNull: false,
     },
     conversationId: {

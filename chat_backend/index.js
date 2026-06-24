@@ -39,6 +39,9 @@ app.use(
       "Authorization",
       "x-access-token",
       "x-chat-app-name",
+      "x-file-name",
+      "x-file-content-type",
+      "x-file-size",
     ],
     credentials: true,
   })

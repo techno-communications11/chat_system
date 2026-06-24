@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { io } from "socket.io-client";
-import { getStoredAuthToken } from "../utils/authToken";
+import { getStoredAuthToken, getStoredChatAppName } from "../utils/authToken";
 
 const getSocketUrl = () => import.meta.env.VITE_API_URL || "http://localhost:4701";
 
@@ -23,7 +23,7 @@ export function useChatRealtime({
     if (!token) return undefined;
 
     const socket = io(getSocketUrl(), {
-      auth: { token },
+      auth: { token, appName: getStoredChatAppName() },
       transports: ["websocket", "polling"],
     });
 

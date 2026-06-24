@@ -145,9 +145,15 @@ export const updateChatStatus = async (req, res) => {
 export const updateChatAvatarController = async (req, res) => {
   try {
     const actor = getChatActor(req);
+    const hasStreamUpload =
+      req.headers["content-type"] &&
+      !String(req.headers["content-type"]).includes("application/json");
     const data = await updateChatAvatar({
       actor,
       avatarUrl: req.body?.avatarUrl || req.body?.avatar_url || req.body?.imageUrl,
+      stream: hasStreamUpload ? req : null,
+      contentType: req.headers["x-file-content-type"] || req.headers["content-type"],
+      fileName: req.headers["x-file-name"],
     });
     return sendSuccess(res, "Profile picture updated", data);
   } catch (error) {
@@ -427,8 +433,9 @@ export const uploadConversationFile = async (req, res) => {
       actor,
       chatId: req.params.chatId,
       stream: req,
-      contentType: req.headers["content-type"],
+      contentType: req.headers["x-file-content-type"] || req.headers["content-type"],
       contentLength: req.headers["content-length"],
+      fileName: req.headers["x-file-name"],
     });
     return sendSuccess(res, "File sent", data);
   } catch (error) {

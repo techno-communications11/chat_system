@@ -20,6 +20,7 @@ const checkAuth = (req, res, next) => {
 
         const token = parts[1];
         const decoded = jwt.verify(token, serverConfig.secretKey);
+        req.authToken = token;
         req.user = decoded;
         next();
     }

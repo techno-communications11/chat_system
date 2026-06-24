@@ -4,7 +4,7 @@ import { Box } from "@mui/material";
 import ChatLauncher from "./ChatSystem/ChatLauncher";
 import ChatSystem from "./ChatSystem/Chatsystem";
 import { CHAT_APP_BASE_PATH } from "./ChatSystem/chatRoutes";
-import { storeAuthToken, storeChatAppName } from "./utils/authToken";
+import { getTokenUser, storeAuthToken, storeChatAppName } from "./utils/authToken";
 
 const tokenParamNames = ["token", "authToken", "access_token"];
 const appParamNames = ["app", "appName", "sourceApp"];
@@ -71,6 +71,12 @@ function TicketingTokenBridge({ children }) {
 
     if (tokenInfo) {
       storeAuthToken(tokenInfo.token);
+      const tokenUser = getTokenUser();
+
+      if (tokenUser) {
+        localStorage.setItem("user", JSON.stringify(tokenUser));
+      }
+
       shouldCleanUrl = true;
 
       if (tokenInfo.fromHash) {

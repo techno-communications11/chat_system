@@ -17,8 +17,17 @@ export const getChatStatusService = () => api.get("/chat-service/me", getChatHea
 export const updateChatStatusService = (presence) =>
   api.patch("/chat-service/me/status", { presence }, getChatHeaders());
 
-export const updateChatAvatarService = (avatarUrl) =>
-  api.patch("/chat-service/me/avatar", { avatarUrl }, getChatHeaders());
+export const updateChatAvatarService = (file) =>
+  api.patch("/chat-service/me/avatar", file, {
+    ...getChatHeaders(),
+    headers: {
+      ...getChatHeaders().headers,
+      "Content-Type": "application/octet-stream",
+      "x-file-content-type": file.type || "application/octet-stream",
+      "x-file-name": encodeURIComponent(file.name || "profile-picture"),
+      "x-file-size": String(file.size || 0),
+    },
+  });
 
 export const getChatUsersService = (params = {}) =>
   api.get("/chat-service/users", {
@@ -41,6 +50,13 @@ export const openDirectChatService = (userId) =>
 
 export const createGroupChatService = ({ title, userIds }) =>
   api.post("/chat-service/conversations/groups", { title, userIds }, getChatHeaders());
+
+export const addGroupMembersService = (chatId, userIds) =>
+  api.post(
+    `/chat-service/conversations/${encodeURIComponent(chatId)}/members`,
+    { userIds },
+    getChatHeaders(),
+  );
 
 export const getChatMessagesService = (chatId, params = {}) =>
   api.get(`/chat-service/conversations/${encodeURIComponent(chatId)}/messages`, {
@@ -69,11 +85,20 @@ export const markConversationReadService = (chatId) =>
     getChatHeaders(),
   );
 
-export const shareConversationFileService = (chatId, formData) =>
+export const shareConversationFileService = (chatId, file) =>
   api.post(
     `/chat-service/conversations/${encodeURIComponent(chatId)}/files`,
-    formData,
-    getChatHeaders(),
+    file,
+    {
+      ...getChatHeaders(),
+      headers: {
+        ...getChatHeaders().headers,
+        "Content-Type": "application/octet-stream",
+        "x-file-content-type": file.type || "application/octet-stream",
+        "x-file-name": encodeURIComponent(file.name || "document"),
+        "x-file-size": String(file.size || 0),
+      },
+    },
   );
 
 export const addMessageReactionService = (chatId, messageId, emoji) =>

@@ -5,12 +5,16 @@ import {
   Box,
   Button,
   CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   Divider,
+  FormControlLabel,
   IconButton,
-  Menu,
-  MenuItem,
   Paper,
   Skeleton,
+  Switch,
   TextField,
   Tooltip,
   Typography,
@@ -19,31 +23,35 @@ import AddIcon from "@mui/icons-material/Add";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import ChatBubbleIcon from "@mui/icons-material/ChatBubble";
 import CircleIcon from "@mui/icons-material/Circle";
+import DoneAllIcon from "@mui/icons-material/DoneAll";
+import DoneIcon from "@mui/icons-material/Done";
 import GroupsIcon from "@mui/icons-material/Groups";
-import NotificationsIcon from "@mui/icons-material/Notifications";
-import PersonIcon from "@mui/icons-material/Person";
+import NotificationsActiveIcon from "@mui/icons-material/NotificationsActive";
 import PhotoCameraIcon from "@mui/icons-material/PhotoCamera";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import SearchIcon from "@mui/icons-material/Search";
+import SettingsIcon from "@mui/icons-material/Settings";
 import PinglyMark from "./PinglyMark";
 import {
   areChatNotificationsEnabled,
   requestChatNotificationPermission,
   setChatNotificationsEnabled,
+  showChatNotification,
 } from "./chatNotifications";
 import {
   getAvailability,
+  getBuddyEmail,
   getBuddyName,
   getBuddySendId,
   getChannelId,
   getChannelName,
   getImageUrl,
+  getMessageText,
   getUnreadCount,
 } from "./chatHelpers";
 
 const appRailItems = [
-  { key: "people", label: "People", icon: <ChatBubbleIcon /> },
-  { key: "channels", label: "Conversations", icon: <GroupsIcon /> },
+  { key: "conversations", label: "All conversations", icon: <ChatBubbleIcon /> },
 ];
 
 const statusOptions = [
@@ -55,10 +63,53 @@ const statusOptions = [
 
 const getInitial = (value) => String(value || "Z").trim().charAt(0).toUpperCase();
 
+const isDirectConversation = (item, isChannel) =>
+  !isChannel ||
+  item?.isDirect ||
+  item?.type === "direct" ||
+  item?.conversationType === "direct";
+
+const getParticipantCount = (item) => {
+  const participants = Array.isArray(item?.participants) ? item.participants : [];
+  const count = item?.participantCount || item?.participant_count || participants.length;
+  return Number(count) || 0;
+};
+
+const getLastMessagePreview = (item, isChannel) => {
+  const rawLastMessage =
+    item?.lastMessage ||
+    item?.last_message ||
+    item?.latestMessage ||
+    item?.latest_message ||
+    null;
+  const text = getMessageText(rawLastMessage) || item?.lastMessageText || item?.last_message_text;
+
+  if (text) return text;
+  if (isChannel && !isDirectConversation(item, isChannel)) {
+    const count = getParticipantCount(item);
+    return count ? `${count} members` : "Group chat";
+  }
+
+  const availability = getAvailability(item);
+  return availability?.label || getBuddyEmail(item) || "Direct message";
+};
+
+const getDeliveryState = (item) =>
+  String(
+    item?.deliveryState ||
+      item?.delivery_state ||
+      item?.messageStatus ||
+      item?.message_status ||
+      item?.lastMessage?.status ||
+      item?.last_message?.status ||
+      "",
+  ).toLowerCase();
+
 function PresenceAvatar({ item, title, isChannel }) {
   const availability = getAvailability(item);
+  const isDirect = isDirectConversation(item, isChannel);
 
-  if (isChannel) {
+  if (!isDirect) {
     return (
       <Avatar
         src={getImageUrl(item)}
@@ -119,6 +170,10 @@ function ChatListItem({
   const itemId = isChannel ? getChannelId(item) : getBuddySendId(item);
   const selected = String(selectedChat?.id || "") === String(itemId || "");
   const disabled = !itemId;
+  const unreadCount = getUnreadCount(item);
+  const isDirect = isDirectConversation(item, isChannel);
+  const deliveryState = getDeliveryState(item);
+  const preview = getLastMessagePreview(item, isChannel);
 
   return (
     <Box
@@ -157,21 +212,87 @@ function ChatListItem({
         <PresenceAvatar item={item} title={title} isChannel={isChannel} />
         <Box minWidth={0} flex={1}>
           <Box display="flex" alignItems="center" gap={0.75}>
-            <Typography fontWeight={700} noWrap flex={1}>
+            <Typography
+              fontWeight={unreadCount > 0 ? 800 : 700}
+              noWrap
+              flex={1}
+              fontSize={15}
+            >
               {title}
             </Typography>
-            {isChannel && getUnreadCount(item) > 0 && (
-              <Badge
-                badgeContent={getUnreadCount(item)}
-                color="error"
+            <Typography variant="caption" color="text.disabled" flexShrink={0}>
+              {item?.lastMessageTime || item?.last_message_time || ""}
+            </Typography>
+          </Box>
+          <Box display="flex" alignItems="center" gap={0.75} minWidth={0} mt={0.25}>
+            {deliveryState === "read" ? (
+              <DoneAllIcon sx={{ fontSize: 15, color: "#3b82f6", flexShrink: 0 }} />
+            ) : deliveryState === "sent" ? (
+              <DoneIcon sx={{ fontSize: 15, color: "#94a3b8", flexShrink: 0 }} />
+            ) : null}
+            <Typography
+              variant="body2"
+              color={unreadCount > 0 ? "text.primary" : "text.secondary"}
+              fontWeight={unreadCount > 0 ? 700 : 400}
+              noWrap
+              flex={1}
+              minWidth={0}
+            >
+              {preview}
+            </Typography>
+            {!isDirect && (
+              <Box
+                component="span"
                 sx={{
-                  "& .MuiBadge-badge": {
-                    fontSize: 10,
-                    height: 18,
-                    minWidth: 18,
-                  },
+                  px: 0.75,
+                  py: 0.2,
+                  borderRadius: 1,
+                  bgcolor: "#edf7ee",
+                  color: "#1f7a3d",
+                  fontSize: 11,
+                  fontWeight: 800,
+                  flexShrink: 0,
                 }}
-              />
+              >
+                Group
+              </Box>
+            )}
+            {isDirect && (
+              <Box
+                component="span"
+                sx={{
+                  px: 0.75,
+                  py: 0.2,
+                  borderRadius: 1,
+                  bgcolor: "#eef4ff",
+                  color: "#215db0",
+                  fontSize: 11,
+                  fontWeight: 800,
+                  flexShrink: 0,
+                }}
+              >
+                1:1
+              </Box>
+            )}
+            {unreadCount > 0 && (
+              <Box
+                component="span"
+                sx={{
+                  minWidth: 18,
+                  height: 18,
+                  px: 0.5,
+                  borderRadius: "999px",
+                  bgcolor: "#d32f2f",
+                  color: "#ffffff",
+                  fontSize: 10,
+                  lineHeight: "18px",
+                  textAlign: "center",
+                  fontWeight: 800,
+                  flexShrink: 0,
+                }}
+              >
+                {unreadCount}
+              </Box>
             )}
           </Box>
         </Box>
@@ -200,21 +321,24 @@ export default function ChatSidebar({
   connectUrl,
   setSearchTerm,
   setTab,
-  tab,
 }) {
-  const [statusAnchorEl, setStatusAnchorEl] = useState(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(
     areChatNotificationsEnabled(),
   );
+  const [notificationPermission, setNotificationPermission] = useState(() =>
+    "Notification" in window ? Notification.permission : "unsupported",
+  );
+  const [settingsNotice, setSettingsNotice] = useState("");
   const avatarInputRef = useRef(null);
-  const isChannelTab = tab === "channels";
-  const sectionTitle = isChannelTab ? "CONVERSATIONS" : "PEOPLE";
-  const currentUserName = currentUser?.name || "Current user";
+  const sectionTitle = "ALL CONVERSATIONS";
+  const currentUserName =
+    currentUser?.name ||
+    currentUser?.displayName ||
+    currentUser?.username ||
+    currentUser?.email ||
+    "Current user";
   const currentUserInitial = getInitial(currentUserName);
-  const status =
-    statusOptions.find((option) => option.value === currentStatus) ||
-    statusOptions[0];
-
   const handleAvatarPick = () => {
     avatarInputRef.current?.click();
   };
@@ -232,11 +356,44 @@ export default function ChatSidebar({
     if (notificationsEnabled) {
       setChatNotificationsEnabled(false);
       setNotificationsEnabled(false);
+      setSettingsNotice("Desktop notifications are off.");
       return;
     }
 
     const permission = await requestChatNotificationPermission();
+    setNotificationPermission(permission);
     setNotificationsEnabled(permission === "granted");
+    setSettingsNotice(
+      permission === "granted"
+        ? "Desktop notifications are on."
+        : "Browser notification permission was not granted.",
+    );
+  };
+
+  const handleStatusPick = (presence) => {
+    onStatusChange(presence);
+  };
+
+  const handleTestNotification = async () => {
+    const permission = await requestChatNotificationPermission();
+    setNotificationPermission(permission);
+    setNotificationsEnabled(permission === "granted");
+
+    if (permission === "granted") {
+      showChatNotification({
+        title: "Pingly",
+        body: "Desktop notifications are ready. New messages will appear here.",
+        icon: getImageUrl(currentUser),
+        tag: `pingly-test-notification-${Date.now()}`,
+      });
+      setSettingsNotice("Test notification sent.");
+    } else if (permission === "denied") {
+      setSettingsNotice("Notifications are blocked in this browser.");
+    } else if (permission === "unsupported") {
+      setSettingsNotice("This browser does not support desktop notifications.");
+    } else {
+      setSettingsNotice("Notification permission was not granted.");
+    }
   };
 
   return (
@@ -263,43 +420,17 @@ export default function ChatSidebar({
           borderRight: "1px solid #edf0f4",
         }}
       >
-        <Tooltip
-          title={
-            currentUser?.email
-              ? `${currentUserName} - ${currentUser.email}`
-              : `${currentUserName} - Change profile picture`
-          }
-          placement="right"
-        >
-          <Badge
-            overlap="circular"
-            anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
-            badgeContent={
-              avatarUploading ? (
-                <CircularProgress size={12} sx={{ color: "#ffffff" }} />
-              ) : (
-                <PhotoCameraIcon sx={{ fontSize: 11, color: "#ffffff" }} />
-              )
-            }
-            sx={{
-              cursor: "pointer",
-              "& .MuiBadge-badge": {
-                width: 18,
-                height: 18,
-                minWidth: 18,
-                bgcolor: "#6F2DA8",
-                border: "2px solid #ffffff",
-              },
-            }}
-            onClick={handleAvatarPick}
+        <Tooltip title={currentUserName} placement="right">
+          <Avatar
+            src={getImageUrl(currentUser)}
+            sx={{ width: 38, height: 38, bgcolor: "#6F2DA8", fontWeight: 900 }}
           >
-            <Avatar
-              src={getImageUrl(currentUser)}
-              sx={{ width: 38, height: 38, bgcolor: "#6F2DA8", fontWeight: 900 }}
-            >
-              {currentUserInitial}
-            </Avatar>
-          </Badge>
+            {avatarUploading ? (
+              <CircularProgress size={16} sx={{ color: "#ffffff" }} />
+            ) : (
+              currentUserInitial
+            )}
+          </Avatar>
         </Tooltip>
         <input
           ref={avatarInputRef}
@@ -316,17 +447,15 @@ export default function ChatSidebar({
               sx={{
                 width: 40,
                 height: 40,
-                color: tab === item.key ? "#6F2DA8" : "#6b7280",
-                bgcolor: tab === item.key ? "#f2e9f8" : "transparent",
+                color: "#6F2DA8",
+                bgcolor: "#f2e9f8",
                 borderRadius: 1.5,
                 "&:hover": { bgcolor: "#f7f8fa" },
               }}
             >
               <Badge
                 badgeContent={
-                  item.key === "channels" && totalUnreadCount > 0
-                    ? totalUnreadCount
-                    : 0
+                  totalUnreadCount > 0 ? totalUnreadCount : 0
                 }
                 color="error"
                 overlap="circular"
@@ -352,7 +481,7 @@ export default function ChatSidebar({
           display="flex"
           alignItems="center"
           justifyContent="space-between"
-          borderBottom="1px solid #edf0f4"
+          borderBottom="1px solid #edf0f4"                                          
           bgcolor="#ffffff"
         >
           <Box display="flex" alignItems="center" gap={1} minWidth={0}>
@@ -362,10 +491,10 @@ export default function ChatSidebar({
               </IconButton>
             </Tooltip>
             <Box minWidth={0}>
-              <PinglyMark size={25} showWord />
-              <Typography variant="caption" color="text.secondary" noWrap>
+              <PinglyMark size={30} showWord />
+              {/* <Typography variant="caption" color="text.secondary" noWrap>
                 {currentUser?.email || "People and groups"}
-              </Typography>
+              </Typography> */}
             </Box>
           </Box>
           <Box display="flex" alignItems="center" gap={0.25}>
@@ -374,57 +503,11 @@ export default function ChatSidebar({
                 <AddIcon fontSize="small" />
               </IconButton>
             </Tooltip>
-            <Tooltip
-              title={
-                notificationsEnabled
-                  ? "Notifications on"
-                  : "Enable notifications"
-              }
-            >
-              <IconButton
-                size="small"
-                onClick={handleToggleNotifications}
-                sx={{
-                  color: notificationsEnabled ? "#6F2DA8" : "#6b7280",
-                }}
-              >
-                <NotificationsIcon fontSize="small" />
+            <Tooltip title="Settings">
+              <IconButton size="small" onClick={() => setSettingsOpen(true)}>
+                <SettingsIcon fontSize="small" />
               </IconButton>
             </Tooltip>
-            <Tooltip title={`Status: ${status.label}`}>
-              <span>
-                <IconButton
-                  size="small"
-                  onClick={(event) => setStatusAnchorEl(event.currentTarget)}
-                  disabled={statusSaving}
-                >
-                  {statusSaving ? (
-                    <CircularProgress size={17} />
-                  ) : (
-                    <CircleIcon sx={{ fontSize: 16, color: status.color }} />
-                  )}
-                </IconButton>
-              </span>
-            </Tooltip>
-            <Menu
-              anchorEl={statusAnchorEl}
-              open={Boolean(statusAnchorEl)}
-              onClose={() => setStatusAnchorEl(null)}
-            >
-              {statusOptions.map((option) => (
-                <MenuItem
-                  key={option.value}
-                  selected={option.value === currentStatus}
-                  onClick={() => {
-                    setStatusAnchorEl(null);
-                    onStatusChange(option.value);
-                  }}
-                >
-                  <CircleIcon sx={{ mr: 1, fontSize: 12, color: option.color }} />
-                  {option.label}
-                </MenuItem>
-              ))}
-            </Menu>
             <Tooltip title="Refresh">
               <span>
                 <IconButton size="small" onClick={onRefresh} disabled={loading}>
@@ -503,20 +586,23 @@ export default function ChatSidebar({
                   </Box>
                 </Box>
               ))
-            : filteredItems.map((item) => (
+            : filteredItems.map((item) => {
+                const isChannelItem = item.__conversationType === "channel";
+                return (
                 <ChatListItem
                   key={
-                    isChannelTab
+                    isChannelItem
                       ? getChannelId(item) || getChannelName(item)
                       : getBuddySendId(item) || getBuddyName(item)
                   }
                   item={item}
-                  isChannel={isChannelTab}
+                  isChannel={isChannelItem}
                   selectedChat={selectedChat}
                   onSelectBuddy={onSelectBuddy}
                   onSelectChannel={onSelectChannel}
                 />
-              ))}
+                );
+              })}
 
           {!loading && filteredItems.length === 0 && (
             <Box
@@ -529,16 +615,142 @@ export default function ChatSidebar({
               px={2}
             >
               <Avatar sx={{ mb: 1.5, bgcolor: "#edf0f4", color: "#5b6472" }}>
-                {isChannelTab ? <GroupsIcon /> : <PersonIcon />}
+                <ChatBubbleIcon />
               </Avatar>
               <Typography fontWeight={700}>No results</Typography>
               <Typography color="text.secondary" variant="body2">
-                No {isChannelTab ? "conversations" : "people"} match your search.
+                No conversations match your search.
               </Typography>
             </Box>
           )}
         </Box>
       </Box>
+
+      <Dialog
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        fullWidth
+        maxWidth="xs"
+      >
+        <DialogTitle>Settings</DialogTitle>
+        <DialogContent dividers>
+          <Box display="flex" alignItems="center" gap={1.5} mb={2}>
+            <Badge
+              overlap="circular"
+              anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+              badgeContent={
+                avatarUploading ? (
+                  <CircularProgress size={12} sx={{ color: "#ffffff" }} />
+                ) : (
+                  <PhotoCameraIcon sx={{ fontSize: 12, color: "#ffffff" }} />
+                )
+              }
+              sx={{
+                cursor: "pointer",
+                "& .MuiBadge-badge": {
+                  width: 20,
+                  height: 20,
+                  minWidth: 20,
+                  bgcolor: "#6F2DA8",
+                  border: "2px solid #ffffff",
+                },
+              }}
+              onClick={handleAvatarPick}
+            >
+              <Avatar
+                src={getImageUrl(currentUser)}
+                sx={{
+                  width: 58,
+                  height: 58,
+                  bgcolor: "#6F2DA8",
+                  fontWeight: 900,
+                  fontSize: 22,
+                }}
+              >
+                {currentUserInitial}
+              </Avatar>
+            </Badge>
+            <Box minWidth={0}>
+              <Typography variant="caption" color="text.secondary" fontWeight={800}>
+                Current account
+              </Typography>
+              <Typography fontWeight={800} noWrap>
+                {currentUserName}
+              </Typography>
+              <Typography variant="body2" color="text.secondary" noWrap>
+                {currentUser?.email || "Pingly user"}
+              </Typography>
+            </Box>
+          </Box>
+
+          <Typography variant="caption" fontWeight={800} color="text.secondary">
+            Presence
+          </Typography>
+          <Box display="grid" gridTemplateColumns="1fr 1fr" gap={1} mt={1} mb={2}>
+            {statusOptions.map((option) => (
+              <Button
+                key={option.value}
+                variant={option.value === currentStatus ? "contained" : "outlined"}
+                disabled={statusSaving}
+                onClick={() => handleStatusPick(option.value)}
+                startIcon={<CircleIcon sx={{ fontSize: 12, color: option.color }} />}
+                sx={{
+                  justifyContent: "flex-start",
+                  textTransform: "none",
+                  borderRadius: 1,
+                  fontWeight: 700,
+                  bgcolor: option.value === currentStatus ? "#6F2DA8" : undefined,
+                  "&:hover": {
+                    bgcolor: option.value === currentStatus ? "#5d238f" : undefined,
+                  },
+                }}
+              >
+                {option.label}
+              </Button>
+            ))}
+          </Box>
+
+          <Divider sx={{ my: 1.5 }} />
+
+          <Box display="flex" alignItems="center" justifyContent="space-between" gap={1}>
+            <Box display="flex" alignItems="center" gap={1} minWidth={0}>
+              <NotificationsActiveIcon sx={{ color: "#6F2DA8" }} />
+              <Box minWidth={0}>
+                <Typography fontWeight={800}>Desktop notifications</Typography>
+                <Typography variant="caption" color="text.secondary" noWrap>
+                  {notificationPermission}
+                </Typography>
+              </Box>
+            </Box>
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={notificationsEnabled}
+                  onChange={handleToggleNotifications}
+                  disabled={notificationPermission === "denied"}
+                />
+              }
+              label=""
+              sx={{ m: 0 }}
+            />
+          </Box>
+          {settingsNotice && (
+            <Typography
+              variant="body2"
+              color="text.secondary"
+              sx={{ mt: 1.25 }}
+            >
+              {settingsNotice}
+            </Typography>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleTestNotification}>Test</Button>
+          <Button variant="contained" onClick={() => setSettingsOpen(false)}>
+            Done
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

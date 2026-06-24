@@ -32,7 +32,7 @@ const ChatChannel = sequelize.define(
       defaultValue: "public",
     },
     ownerUserId: {
-      type: DataTypes.INTEGER,
+      type: DataTypes.STRING,
       allowNull: false,
     },
     conversationId: {

@@ -149,6 +149,14 @@ const addColumnIfMissing = async (queryInterface, tableName, columnName, definit
   }
 };
 
+const changeColumnIfPresent = async (queryInterface, tableName, columnName, definition) => {
+  const table = await queryInterface.describeTable(tableName);
+
+  if (table[columnName]) {
+    await queryInterface.changeColumn(tableName, columnName, definition);
+  }
+};
+
 const ensureSchemaCompatibility = async () => {
   const queryInterface = sequelize.getQueryInterface();
 
@@ -176,8 +184,20 @@ const ensureSchemaCompatibility = async () => {
     type: DataTypes.JSON,
     allowNull: true,
   });
+  await changeColumnIfPresent(queryInterface, "chat_groups", "ownerUserId", {
+    type: DataTypes.STRING,
+    allowNull: false,
+  });
+  await changeColumnIfPresent(queryInterface, "chat_channels", "ownerUserId", {
+    type: DataTypes.STRING,
+    allowNull: false,
+  });
   await addColumnIfMissing(queryInterface, "chat_users", "metadata", {
     type: DataTypes.JSON,
+    allowNull: true,
+  });
+  await changeColumnIfPresent(queryInterface, "chat_users", "avatarUrl", {
+    type: DataTypes.TEXT,
     allowNull: true,
   });
   await addColumnIfMissing(queryInterface, "chat_audit_logs", "metadata", {

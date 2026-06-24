@@ -57,6 +57,35 @@ The frontend should use:
 VITE_API_URL=http://localhost:4701
 ```
 
+## Multi-Application Embedding
+
+Open chat from each application with both the JWT and application name:
+
+```text
+https://chat.example.com/chat?token=<jwt>&app=ticket_portal
+```
+
+The frontend stores the app name and sends it on every API request:
+
+```http
+x-chat-app-name: ticket_portal
+Authorization: Bearer <jwt>
+```
+
+Configure an app-specific user directory endpoint so `/chat-service/users`
+returns only the people associated with the current user in that application:
+
+```env
+CHAT_PROVIDER_TICKET_PORTAL_USERS_URL=https://ticket.example.com/api/chat/users
+```
+
+The chat backend calls that endpoint with the same bearer token and query params
+like `currentUserId`, `email`, `search`, `limit`, and `excludeSelf`. The endpoint
+can return an array directly or `{ "users": [...] }` / `{ "data": [...] }`.
+
+If no provider URL is configured for an app, chat falls back to local
+`chat_users` plus already-known chat identities.
+
 ## Enterprise Chat API
 
 All chat routes live under `/chat-service` and require `Authorization: Bearer <jwt>`

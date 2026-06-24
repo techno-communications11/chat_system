@@ -41,6 +41,58 @@ import {
   getUnreadCount,
 } from "./chatHelpers";
 
+const getCurrentUser = () => {
+  try {
+    return JSON.parse(localStorage.getItem("user") || "null");
+  } catch {
+    return null;
+  }
+};
+
+const isCurrentUserRecord = (item, currentUser) => {
+  const currentUserId = String(
+    currentUser?.id || currentUser?.userId || currentUser?.user_id || "",
+  );
+  const currentUserEmail = String(
+    currentUser?.email || currentUser?.email_id || currentUser?.mailid || "",
+  ).toLowerCase();
+  const itemId = String(getBuddySendId(item) || "");
+  const itemEmail = String(getBuddyEmail(item) || "").toLowerCase();
+
+  return (
+    (currentUserId && itemId === currentUserId) ||
+    (currentUserEmail && itemEmail === currentUserEmail)
+  );
+};
+
+const isSelfConversation = (conversation, currentUser) => {
+  const participants = Array.isArray(conversation?.participants)
+    ? conversation.participants
+    : [];
+  const isDirect =
+    conversation?.isDirect ||
+    conversation?.type === "direct" ||
+    conversation?.conversationType === "direct";
+
+  if (!isDirect) return false;
+  if (participants.length > 0) {
+    return participants.every((participant) =>
+      isCurrentUserRecord(participant, currentUser),
+    );
+  }
+
+  const currentUserName = String(currentUser?.name || "").toLowerCase();
+  const currentUserEmail = String(currentUser?.email || "").toLowerCase();
+  const title = String(conversation?.title || conversation?.name || "").toLowerCase();
+
+  return (
+    title === "myself" ||
+    title === "me" ||
+    (currentUserName && title === currentUserName) ||
+    (currentUserEmail && title === currentUserEmail)
+  );
+};
+
 const openChatInNewTab = (chatId) => {
   const path = chatId
     ? `${CHAT_APP_BASE_PATH}/${encodeURIComponent(chatId)}`
@@ -79,13 +131,22 @@ export default function ChatLauncher() {
 
   const fetchChatData = useCallback(async () => {
     try {
+      const currentUser = getCurrentUser();
       const [buddyResponse, channelResponse] = await Promise.all([
-        getChatUsersService(),
+        getChatUsersService({ excludeSelf: true }),
         getChatConversationsService(),
       ]);
 
-      setBuddies(getArrayPayload(buddyResponse.data?.data).slice(0, 8));
-      setChannels(getArrayPayload(channelResponse.data?.data).slice(0, 5));
+      setBuddies(
+        getArrayPayload(buddyResponse.data?.data)
+          .filter((buddy) => !isCurrentUserRecord(buddy, currentUser))
+          .slice(0, 8),
+      );
+      setChannels(
+        getArrayPayload(channelResponse.data?.data)
+          .filter((channel) => !isSelfConversation(channel, currentUser))
+          .slice(0, 5),
+      );
     } catch {
       setBuddies([]);
       setChannels([]);

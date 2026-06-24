@@ -1,4 +1,5 @@
 import { Op } from "sequelize";
+import crypto from "crypto";
 import ChatIdentity from "../modules/chatIdentity.module.js";
 import ChatConversation from "../modules/chatConversation.module.js";
 import ChatConversationParticipant from "../modules/chatConversationParticipant.module.js";
@@ -13,6 +14,11 @@ import {
   listChatDirectoryUsers,
   updateChatUserAvatar,
 } from "./chatUser.services.js";
+import {
+  fetchApplicationUsers,
+  findApplicationUser,
+  normalizeAppName,
+} from "./applicationDirectory.services.js";
 import { normalizeAvatarUrl } from "./chatAvatar.services.js";
 import {
   broadcastAvatarUpdate,
@@ -32,6 +38,186 @@ class ChatServiceError extends Error {
     this.details = options.details;
   }
 }
+
+const readStreamToBuffer = async (stream, maxBytes = 25 * 1024 * 1024) => {
+  const chunks = [];
+  let totalBytes = 0;
+
+  for await (const chunk of stream) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    totalBytes += buffer.length;
+
+    if (totalBytes > maxBytes) {
+      throw new ChatServiceError("File is too large. Maximum size is 25MB.", {
+        status: 413,
+        code: "CHAT_FILE_TOO_LARGE",
+      });
+    }
+
+    chunks.push(buffer);
+  }
+
+  return Buffer.concat(chunks);
+};
+
+const sanitizeFileName = (value) => {
+  const decoded = decodeURIComponent(String(value || "document").trim());
+  const name = decoded.split(/[\\/]/).pop() || "document";
+  return name.replace(/[^\w.\- ()]/g, "_").slice(0, 160) || "document";
+};
+
+const hmac = (key, value, encoding) =>
+  crypto.createHmac("sha256", key).update(value, "utf8").digest(encoding);
+
+const hash = (value, encoding = "hex") =>
+  crypto.createHash("sha256").update(value).digest(encoding);
+
+const getSignatureKey = (secretKey, dateStamp, region, service) => {
+  const kDate = hmac(`AWS4${secretKey}`, dateStamp);
+  const kRegion = hmac(kDate, region);
+  const kService = hmac(kRegion, service);
+  return hmac(kService, "aws4_request");
+};
+
+const createS3DownloadUrl = ({
+  bucket,
+  region,
+  accessKeyId,
+  secretAccessKey,
+  objectKey,
+  expiresSeconds = 604800,
+}) => {
+  const host = `${bucket}.s3.${region}.amazonaws.com`;
+  const now = new Date();
+  const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, "");
+  const dateStamp = amzDate.slice(0, 8);
+  const credentialScope = `${dateStamp}/${region}/s3/aws4_request`;
+  const query = {
+    "X-Amz-Algorithm": "AWS4-HMAC-SHA256",
+    "X-Amz-Credential": `${accessKeyId}/${credentialScope}`,
+    "X-Amz-Date": amzDate,
+    "X-Amz-Expires": String(expiresSeconds),
+    "X-Amz-SignedHeaders": "host",
+  };
+  const canonicalQuery = Object.keys(query)
+    .sort()
+    .map((key) => `${encodeURIComponent(key)}=${encodeURIComponent(query[key])}`)
+    .join("&");
+  const canonicalRequest = [
+    "GET",
+    `/${objectKey}`,
+    canonicalQuery,
+    `host:${host}\n`,
+    "host",
+    "UNSIGNED-PAYLOAD",
+  ].join("\n");
+  const stringToSign = [
+    "AWS4-HMAC-SHA256",
+    amzDate,
+    credentialScope,
+    hash(canonicalRequest),
+  ].join("\n");
+  const signingKey = getSignatureKey(secretAccessKey, dateStamp, region, "s3");
+  const signature = hmac(signingKey, stringToSign, "hex");
+
+  return `https://${host}/${objectKey}?${canonicalQuery}&X-Amz-Signature=${signature}`;
+};
+
+const uploadToS3 = async ({
+  buffer,
+  fileName,
+  contentType,
+  actor,
+  chatId,
+  prefix = "chat-documents",
+}) => {
+  const region = process.env.AWS_BUCKET_REGION;
+  const accessKeyId = process.env.AWS_ACCESS_KEY_ID;
+  const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY;
+  const bucket = process.env.AWS_BUCKET_NAME;
+
+  if (!region || !accessKeyId || !secretAccessKey || !bucket) {
+    throw new ChatServiceError("AWS S3 upload is not configured", {
+      status: 500,
+      code: "CHAT_S3_NOT_CONFIGURED",
+    });
+  }
+
+  const safeName = sanitizeFileName(fileName);
+  const now = new Date();
+  const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, "");
+  const dateStamp = amzDate.slice(0, 8);
+  const objectKey = [
+    prefix,
+    actor.appName,
+    String(chatId),
+    `${Date.now()}-${crypto.randomUUID()}-${safeName}`,
+  ].map((part) => encodeURIComponent(part)).join("/");
+  const host = `${bucket}.s3.${region}.amazonaws.com`;
+  const canonicalUri = `/${objectKey}`;
+  const payloadHash = hash(buffer);
+  const credentialScope = `${dateStamp}/${region}/s3/aws4_request`;
+  const canonicalHeaders =
+    `host:${host}\n` +
+    `x-amz-content-sha256:${payloadHash}\n` +
+    `x-amz-date:${amzDate}\n`;
+  const signedHeaders = "host;x-amz-content-sha256;x-amz-date";
+  const canonicalRequest = [
+    "PUT",
+    canonicalUri,
+    "",
+    canonicalHeaders,
+    signedHeaders,
+    payloadHash,
+  ].join("\n");
+  const stringToSign = [
+    "AWS4-HMAC-SHA256",
+    amzDate,
+    credentialScope,
+    hash(canonicalRequest),
+  ].join("\n");
+  const signingKey = getSignatureKey(secretAccessKey, dateStamp, region, "s3");
+  const signature = hmac(signingKey, stringToSign, "hex");
+  const authorization =
+    `AWS4-HMAC-SHA256 Credential=${accessKeyId}/${credentialScope}, ` +
+    `SignedHeaders=${signedHeaders}, Signature=${signature}`;
+  const url = `https://${host}${canonicalUri}`;
+  const response = await fetch(url, {
+    method: "PUT",
+    headers: {
+      Authorization: authorization,
+      "Content-Type": contentType || "application/octet-stream",
+      "Content-Length": String(buffer.length),
+      "x-amz-content-sha256": payloadHash,
+      "x-amz-date": amzDate,
+    },
+    body: buffer,
+  });
+
+  if (!response.ok) {
+    throw new ChatServiceError("Could not upload file to S3", {
+      status: 502,
+      code: "CHAT_S3_UPLOAD_FAILED",
+      details: await response.text().catch(() => null),
+    });
+  }
+
+  return {
+    bucket,
+    key: decodeURIComponent(objectKey),
+    name: safeName,
+    size: buffer.length,
+    contentType: contentType || "application/octet-stream",
+    url: createS3DownloadUrl({
+      bucket,
+      region,
+      accessKeyId,
+      secretAccessKey,
+      objectKey,
+    }),
+    publicUrl: url,
+  };
+};
 
 const assertString = (value, fieldName) => {
   if (typeof value !== "string" || value.trim().length === 0) {
@@ -214,7 +400,8 @@ const toGroup = (group) => ({
 });
 
 export const getChatActor = (req) => ({
-  appName: req.headers["x-chat-app-name"] || defaultAppName,
+  appName: normalizeAppName(req.headers["x-chat-app-name"] || defaultAppName),
+  authToken: req.authToken || null,
   appUserId:
     req.user?.id ||
     req.user?.userId ||
@@ -246,7 +433,9 @@ const assertActor = (actor) => {
 
 const ensureLocalIdentity = async (actor) => {
   assertActor(actor);
-  const chatUser = await getChatDirectoryUserById(actor.appUserId);
+  const chatUser =
+    (await findApplicationUser({ actor, userId: actor.appUserId }).catch(() => null)) ||
+    (await getChatDirectoryUserById(actor.appUserId));
 
   const [identity] = await ChatIdentity.findOrCreate({
     where: {
@@ -322,6 +511,7 @@ export const updateChatPresence = async ({ actor, presence }) => {
   const user = toUser(identity, chatUser);
 
   broadcastPresenceUpdate({
+    appName: actor.appName,
     userId: String(actor.appUserId),
     presence: normalizedPresence,
     user,
@@ -336,18 +526,21 @@ export const updateChatPresence = async ({ actor, presence }) => {
   };
 };
 
-const findOrCreateUserIdentity = async ({ appName, userId, email, displayName }) => {
+const findOrCreateUserIdentity = async ({ actor, appName, userId, email, displayName }) => {
   assertString(String(userId || ""), "userId");
-  const chatUser = await getChatDirectoryUserById(userId);
+  const resolvedAppName = normalizeAppName(appName || actor?.appName || defaultAppName);
+  const chatUser =
+    (actor ? await findApplicationUser({ actor, userId }).catch(() => null) : null) ||
+    (await getChatDirectoryUserById(userId));
 
   const [identity] = await ChatIdentity.findOrCreate({
     where: {
-      appName,
+      appName: resolvedAppName,
       appUserId: String(userId),
       provider,
     },
     defaults: {
-      appName,
+      appName: resolvedAppName,
       appUserId: String(userId),
       appUserEmail: chatUser?.email || email || null,
       provider,
@@ -376,13 +569,19 @@ const findOrCreateUserIdentity = async ({ appName, userId, email, displayName })
   return identity;
 };
 
-const getConversationForMember = async ({ chatId, identityId }) => {
+const getConversationForMember = async ({ chatId, identityId, appName }) => {
   const participant = await ChatConversationParticipant.findOne({
     where: {
       conversationId: chatId,
       chatIdentityId: identityId,
     },
-    include: [{ model: ChatConversation, as: "conversation" }],
+    include: [
+      {
+        model: ChatConversation,
+        as: "conversation",
+        where: appName ? { appName: normalizeAppName(appName) } : undefined,
+      },
+    ],
   });
 
   if (!participant?.conversation) {
@@ -395,13 +594,19 @@ const getConversationForMember = async ({ chatId, identityId }) => {
   return participant.conversation;
 };
 
-const getParticipantForMember = async ({ chatId, identityId }) => {
+const getParticipantForMember = async ({ chatId, identityId, appName }) => {
   const participant = await ChatConversationParticipant.findOne({
     where: {
       conversationId: chatId,
       chatIdentityId: identityId,
     },
-    include: [{ model: ChatConversation, as: "conversation" }],
+    include: [
+      {
+        model: ChatConversation,
+        as: "conversation",
+        where: appName ? { appName: normalizeAppName(appName) } : undefined,
+      },
+    ],
   });
 
   if (!participant?.conversation) {
@@ -482,11 +687,27 @@ export const getChatUsers = async ({ actor, query = {} }) => {
   const identity = await ensureLocalIdentity(actor);
   const limit = normalizeLimit(query.limit, 50, 100);
   const search = String(query.search || "").trim();
-  const directoryUsers = await listChatDirectoryUsers({
-    search,
-    limit,
-    excludeUserId: query.excludeSelf ? identity.appUserId : null,
+  const providerUsers = await fetchApplicationUsers({
+    actor,
+    query: {
+      search,
+      limit,
+      excludeSelf: query.excludeSelf,
+    },
+  }).catch((error) => {
+    throw new ChatServiceError(error.message, {
+      status: error.status || 502,
+      code: error.code || "CHAT_APP_DIRECTORY_FAILED",
+      details: error.details,
+    });
   });
+  const directoryUsers =
+    providerUsers ||
+    (await listChatDirectoryUsers({
+      search,
+      limit,
+      excludeUserId: query.excludeSelf ? identity.appUserId : null,
+    }));
   const identityWhere = {
     appName: actor.appName,
     provider,
@@ -517,7 +738,11 @@ export const getChatUsers = async ({ actor, query = {} }) => {
   }
 
   for (const knownIdentity of knownIdentities) {
-    usersByKey.set(String(knownIdentity.appUserId), toUser(knownIdentity));
+    const key = String(knownIdentity.appUserId);
+
+    if (!usersByKey.has(key)) {
+      usersByKey.set(key, toUser(knownIdentity));
+    }
   }
 
   await writeChatAuditLog({
@@ -534,7 +759,9 @@ export const getChatUsers = async ({ actor, query = {} }) => {
 export const getChatUserProfile = async ({ actor, userId }) => {
   await ensureLocalIdentity(actor);
   assertString(userId, "userId");
-  const chatUser = await getChatDirectoryUserById(userId);
+  const chatUser =
+    (await findApplicationUser({ actor, userId }).catch(() => null)) ||
+    (await getChatDirectoryUserById(userId));
 
   if (chatUser) {
     return chatUser;
@@ -562,7 +789,13 @@ export const getChatConversations = async ({ actor }) => {
   const identity = await ensureLocalIdentity(actor);
   const participants = await ChatConversationParticipant.findAll({
     where: { chatIdentityId: identity.id },
-    include: [{ model: ChatConversation, as: "conversation" }],
+    include: [
+      {
+        model: ChatConversation,
+        as: "conversation",
+        where: { appName: actor.appName },
+      },
+    ],
     order: [[{ model: ChatConversation, as: "conversation" }, "lastMessageAt", "DESC"]],
   });
 
@@ -579,6 +812,7 @@ export const updateGroupConversation = async ({ actor, chatId, title }) => {
   const participant = await getParticipantForMember({
     chatId,
     identityId: identity.id,
+    appName: actor.appName,
   });
   const conversation = participant.conversation;
 
@@ -610,6 +844,7 @@ export const addGroupConversationMembers = async ({ actor, chatId, userIds = [] 
   const participant = await getParticipantForMember({
     chatId,
     identityId: identity.id,
+    appName: actor.appName,
   });
   const conversation = participant.conversation;
 
@@ -636,6 +871,7 @@ export const addGroupConversationMembers = async ({ actor, chatId, userIds = [] 
 
   for (const userId of uniqueUserIds) {
     const memberIdentity = await findOrCreateUserIdentity({
+      actor,
       appName: actor.appName,
       userId,
     });
@@ -671,6 +907,7 @@ export const removeGroupConversationMember = async ({ actor, chatId, userId }) =
   const participant = await getParticipantForMember({
     chatId,
     identityId: identity.id,
+    appName: actor.appName,
   });
   const conversation = participant.conversation;
 
@@ -734,6 +971,7 @@ export const leaveChatConversation = async ({ actor, chatId }) => {
   const participant = await getParticipantForMember({
     chatId,
     identityId: identity.id,
+    appName: actor.appName,
   });
   const conversation = participant.conversation;
 
@@ -772,7 +1010,7 @@ export const leaveChatConversation = async ({ actor, chatId }) => {
 
 export const markChatConversationRead = async ({ actor, chatId }) => {
   const identity = await ensureLocalIdentity(actor);
-  await getConversationForMember({ chatId, identityId: identity.id });
+  await getConversationForMember({ chatId, identityId: identity.id, appName: actor.appName });
 
   await ChatConversationParticipant.update(
     { lastReadAt: new Date() },
@@ -800,6 +1038,14 @@ export const searchChatMessages = async ({ actor, query = {} }) => {
 
   const memberships = await ChatConversationParticipant.findAll({
     where: { chatIdentityId: identity.id },
+    include: [
+      {
+        model: ChatConversation,
+        as: "conversation",
+        where: { appName: actor.appName },
+        attributes: [],
+      },
+    ],
     attributes: ["conversationId"],
   });
   const conversationIds = memberships.map((membership) => membership.conversationId);
@@ -874,6 +1120,7 @@ export const getChatAuditLogs = async ({ actor, query = {} }) => {
 export const createDirectConversation = async ({ actor, userId }) => {
   const actorIdentity = await ensureLocalIdentity(actor);
   const targetIdentity = await findOrCreateUserIdentity({
+    actor,
     appName: actor.appName,
     userId,
   });
@@ -914,7 +1161,7 @@ export const createGroupConversation = async ({ actor, title, userIds = [] }) =>
     appName: actor.appName,
     name: conversation.title,
     description: null,
-    ownerUserId: Number(actorIdentity.appUserId),
+    ownerUserId: String(actorIdentity.appUserId),
     conversationId: conversation.id,
   });
   await conversation.update({
@@ -931,6 +1178,7 @@ export const createGroupConversation = async ({ actor, title, userIds = [] }) =>
     if (String(userId) === String(actorIdentity.appUserId)) continue;
 
     const identity = await findOrCreateUserIdentity({
+      actor,
       appName: actor.appName,
       userId,
     });
@@ -1009,7 +1257,7 @@ export const createChatChannel = async ({
     slug,
     description: description || null,
     visibility: visibility === "private" ? "private" : "public",
-    ownerUserId: Number(actorIdentity.appUserId),
+    ownerUserId: String(actorIdentity.appUserId),
     conversationId: conversation.id,
   });
 
@@ -1028,6 +1276,7 @@ export const createChatChannel = async ({
     if (String(userId) === String(actorIdentity.appUserId)) continue;
 
     const identity = await findOrCreateUserIdentity({
+      actor,
       appName: actor.appName,
       userId,
     });
@@ -1127,7 +1376,7 @@ export const joinChatChannel = async ({ actor, channelId }) => {
 
 export const getChatMessages = async ({ actor, chatId, query = {} }) => {
   const identity = await ensureLocalIdentity(actor);
-  await getConversationForMember({ chatId, identityId: identity.id });
+  await getConversationForMember({ chatId, identityId: identity.id, appName: actor.appName });
 
   const limit = normalizeLimit(query.limit, 50, 100);
   const where = { conversationId: chatId };
@@ -1180,6 +1429,7 @@ export const sendChatMessage = async ({ actor, chatId, text, replyTo, metadata }
   const conversation = await getConversationForMember({
     chatId,
     identityId: identity.id,
+    appName: actor.appName,
   });
   assertString(text, "text");
 
@@ -1222,6 +1472,7 @@ export const sendChatMessage = async ({ actor, chatId, text, replyTo, metadata }
     .filter(Boolean);
 
   await notifyConversationMessage({
+    appName: actor.appName,
     conversationId: conversation.id,
     message: messagePayload,
     participantUserIds,
@@ -1297,23 +1548,40 @@ export const sendBroadcastMessage = async ({ actor, text, search }) => {
   return sendMultiUserMessage({ actor, userIds, text });
 };
 
-export const sendChatFile = async ({ actor, chatId, contentType, contentLength }) => {
+export const sendChatFile = async ({
+  actor,
+  chatId,
+  stream,
+  contentType,
+  contentLength,
+  fileName,
+}) => {
+  const buffer = await readStreamToBuffer(stream);
+  const file = await uploadToS3({
+    buffer,
+    fileName,
+    contentType,
+    actor,
+    chatId,
+  });
+
   return sendChatMessage({
     actor,
     chatId,
-    text: "Sent a file",
+    text: file.name,
     replyTo: null,
     metadata: {
       type: "file",
-      contentType,
-      contentLength,
+      contentType: file.contentType,
+      contentLength: Number(contentLength) || file.size,
+      file,
     },
   });
 };
 
 export const addChatReaction = async ({ actor, chatId, messageId, emoji }) => {
   const identity = await ensureLocalIdentity(actor);
-  await getConversationForMember({ chatId, identityId: identity.id });
+  await getConversationForMember({ chatId, identityId: identity.id, appName: actor.appName });
   assertString(messageId, "messageId");
   assertString(emoji, "emoji");
 
@@ -1344,7 +1612,7 @@ export const addChatReaction = async ({ actor, chatId, messageId, emoji }) => {
 
 export const removeChatReaction = async ({ actor, chatId, messageId, emoji }) => {
   const identity = await ensureLocalIdentity(actor);
-  await getConversationForMember({ chatId, identityId: identity.id });
+  await getConversationForMember({ chatId, identityId: identity.id, appName: actor.appName });
   assertString(messageId, "messageId");
   assertString(emoji, "emoji");
 
@@ -1363,13 +1631,47 @@ export const removeChatReaction = async ({ actor, chatId, messageId, emoji }) =>
   };
 };
 
-export const updateChatAvatar = async ({ actor, avatarUrl }) => {
+export const updateChatAvatar = async ({
+  actor,
+  avatarUrl,
+  stream,
+  contentType,
+  fileName,
+}) => {
   const identity = await ensureLocalIdentity(actor);
-  const normalizedAvatarUrl = normalizeAvatarUrl(avatarUrl);
+  let normalizedAvatarUrl;
+
+  if (stream) {
+    const normalizedContentType = String(contentType || "").toLowerCase();
+
+    if (!normalizedContentType.startsWith("image/")) {
+      throw new ChatServiceError("Profile picture must be an image", {
+        status: 400,
+        code: "CHAT_INVALID_AVATAR",
+      });
+    }
+
+    const buffer = await readStreamToBuffer(stream, 5 * 1024 * 1024);
+    const avatar = await uploadToS3({
+      buffer,
+      fileName: fileName || "profile-picture",
+      contentType: normalizedContentType,
+      actor,
+      chatId: actor.appUserId,
+      prefix: "chat-avatars",
+    });
+
+    normalizedAvatarUrl = normalizeAvatarUrl(avatar.publicUrl || avatar.url);
+  } else {
+    normalizedAvatarUrl = normalizeAvatarUrl(avatarUrl);
+  }
 
   await updateChatUserAvatar({
     userId: actor.appUserId,
     avatarUrl: normalizedAvatarUrl,
+    email: actor.appUserEmail,
+    displayName: actor.displayName,
+    username: actor.appUserEmail || actor.appUserId,
   });
 
   await identity.update({
@@ -1383,6 +1685,7 @@ export const updateChatAvatar = async ({ actor, avatarUrl }) => {
   const user = toUser(identity, chatUser);
 
   broadcastAvatarUpdate({
+    appName: actor.appName,
     userId: String(actor.appUserId),
     avatarUrl: normalizedAvatarUrl,
     user,

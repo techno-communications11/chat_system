@@ -201,17 +201,57 @@ export const createChatRole = async ({ name, description, permissions }) => {
   return role;
 };
 
-export const updateChatUserAvatar = async ({ userId, avatarUrl }) => {
-  const user = await ChatUser.findByPk(Number(userId) || 0);
+const buildExternalUsername = (userId, email) => {
+  const emailName = String(email || "").split("@")[0].trim().toLowerCase();
+  const base = emailName || `user-${String(userId || crypto.randomUUID())}`;
 
-  if (!user) {
-    const error = new Error("Chat user not found");
-    error.status = 404;
-    error.code = "CHAT_USER_NOT_FOUND";
-    throw error;
+  return base.replace(/[^a-z0-9._-]+/g, "-").replace(/(^-|-$)/g, "") || "chat-user";
+};
+
+export const updateChatUserAvatar = async ({
+  userId,
+  avatarUrl,
+  email,
+  displayName,
+  username,
+}) => {
+  const numericUserId = Number(userId) || 0;
+  const normalizedEmail = String(email || "").trim().toLowerCase();
+  const normalizedUsername = String(username || buildExternalUsername(userId, normalizedEmail))
+    .trim()
+    .toLowerCase();
+  let user = numericUserId ? await ChatUser.findByPk(numericUserId) : null;
+
+  if (!user && normalizedEmail) {
+    user = await ChatUser.findOne({ where: { email: normalizedEmail } });
   }
 
-  await user.update({ avatarUrl });
+  if (!user) {
+    const createPayload = {
+      email: normalizedEmail || `${normalizedUsername}@chat.local`,
+      username: normalizedUsername,
+      displayName:
+        String(displayName || "").trim() ||
+        normalizedEmail ||
+        normalizedUsername ||
+        "Chat User",
+      passwordHash: hashPassword(crypto.randomUUID()),
+      avatarUrl,
+      status: "active",
+    };
+
+    if (numericUserId) {
+      createPayload.id = numericUserId;
+    }
+
+    user = await ChatUser.create(createPayload);
+  } else {
+    await user.update({
+      avatarUrl,
+      ...(normalizedEmail && !user.email ? { email: normalizedEmail } : {}),
+      ...(displayName ? { displayName: String(displayName).trim() } : {}),
+    });
+  }
 
   const fullUser = await ChatUser.findByPk(user.id, { include: includeRoles });
 

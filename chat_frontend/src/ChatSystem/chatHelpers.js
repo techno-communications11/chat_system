@@ -35,22 +35,38 @@ export const getBuddyName = (buddy) =>
     getBuddyEmail(buddy) ||
   "Chat User";
 
+const normalizeAssetUrl = (value) => {
+  const url = String(value || "").trim();
+
+  if (!url) return "";
+  if (/^(data:|blob:|https?:\/\/)/i.test(url)) return url;
+
+  const apiUrl = import.meta.env.VITE_API_URL || "";
+  if (apiUrl && url.startsWith("/")) {
+    return `${apiUrl.replace(/\/$/, "")}${url}`;
+  }
+
+  return url;
+};
+
 export const getImageUrl = (item) =>
-  item?.avatarUrl ||
-  item?.imageUrl ||
-  item?.profilePicture ||
-  item?.profile_picture ||
-  item?.picture ||
-  item?.photo ||
-  item?.image_url ||
-  item?.photo_url ||
-  item?.profile_image ||
-  item?.profile_image_url ||
-  item?.avatar_url ||
-  item?.thumbnail_url ||
-  item?.icon_url ||
-  item?.image ||
-  "";
+  normalizeAssetUrl(
+    item?.avatarUrl ||
+      item?.imageUrl ||
+      item?.profilePicture ||
+      item?.profile_picture ||
+      item?.picture ||
+      item?.photo ||
+      item?.image_url ||
+      item?.photo_url ||
+      item?.profile_image ||
+      item?.profile_image_url ||
+      item?.avatar_url ||
+      item?.thumbnail_url ||
+      item?.icon_url ||
+      item?.image ||
+      "",
+  );
 
 const pickStatusValue = (value) => {
   if (value == null) return "";
@@ -197,6 +213,61 @@ export const getMessageText = (message) =>
   message?.message ||
   "";
 
+const getFileUrl = (file) =>
+  file?.url ||
+  file?.fileUrl ||
+  file?.file_url ||
+  file?.downloadUrl ||
+  file?.download_url ||
+  file?.publicUrl ||
+  file?.public_url ||
+  "";
+
+export const getMessageAttachments = (message) => {
+  const metadata = message?.metadata || {};
+  const content = message?.content || {};
+  const candidates = [
+    metadata.file,
+    metadata.attachment,
+    content.file,
+    content.attachment,
+    ...(Array.isArray(metadata.files) ? metadata.files : []),
+    ...(Array.isArray(metadata.attachments) ? metadata.attachments : []),
+    ...(Array.isArray(content.files) ? content.files : []),
+    ...(Array.isArray(content.attachments) ? content.attachments : []),
+  ].filter(Boolean);
+
+  if (metadata.type === "file" && candidates.length === 0) {
+    candidates.push(metadata);
+  }
+
+  return candidates.map((file, index) => {
+    const name =
+      file.name ||
+      file.fileName ||
+      file.file_name ||
+      file.originalName ||
+      file.original_name ||
+      content.file_name ||
+      message?.file_name ||
+      "Document";
+
+    return {
+      id: file.id || file.key || getFileUrl(file) || `${name}-${index}`,
+      name,
+      url: getFileUrl(file),
+      size: file.size || file.contentLength || file.content_length || metadata.contentLength,
+      contentType:
+        file.contentType ||
+        file.content_type ||
+        file.mimeType ||
+        file.mime_type ||
+        metadata.contentType ||
+        "",
+    };
+  });
+};
+
 export const getMessageSenderId = (message) => {
   const sender = message?.sender || message?.from || message?.user || {};
 
@@ -230,13 +301,14 @@ export const normalizeChatMessages = (payload, selectedChat) => {
     .map((message, index) => {
       const senderId = getMessageSenderId(message);
       const text = getMessageText(message);
+      const attachments = getMessageAttachments(message);
 
       return {
         id:
           message?.message_id ||
           message?.id ||
           `${getMessageTime(message)}-${index}`,
-        text: text || "[Unsupported message]",
+        text: text || (attachments.length ? "" : "[Unsupported message]"),
         sentAt: getMessageTime(message),
         direction:
           message?.direction ||
@@ -248,6 +320,7 @@ export const normalizeChatMessages = (payload, selectedChat) => {
         reactions: message?.reactions || [],
         metadata: message?.metadata || {},
         mentions: message?.metadata?.mentions || message?.mentions || [],
+        attachments,
       };
     })
     .sort((first, second) => new Date(first.sentAt) - new Date(second.sentAt));

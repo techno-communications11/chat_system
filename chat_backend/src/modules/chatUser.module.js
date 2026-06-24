@@ -28,7 +28,7 @@ const ChatUser = sequelize.define(
       allowNull: false,
     },
     avatarUrl: {
-      type: DataTypes.STRING,
+      type: DataTypes.TEXT,
       allowNull: true,
     },
     status: {
