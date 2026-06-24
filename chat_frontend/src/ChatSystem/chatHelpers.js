@@ -198,8 +198,16 @@ export const getUnreadCount = (item) => {
 };
 
 export const normalizeChatError = (error) => {
+  const details = error?.response?.data?.details;
+  const detailText =
+    typeof details === "string"
+      ? details
+      : details
+      ? JSON.stringify(details)
+      : "";
+
   return (
-    error?.response?.data?.message ||
+    [error?.response?.data?.message, detailText].filter(Boolean).join(": ") ||
     error?.message ||
     "Chat request failed."
   );
@@ -320,6 +328,9 @@ export const normalizeChatMessages = (payload, selectedChat) => {
         reactions: message?.reactions || [],
         metadata: message?.metadata || {},
         mentions: message?.metadata?.mentions || message?.mentions || [],
+        replyTo: message?.replyTo || message?.reply_to || message?.replyToMessageId || null,
+        edited: Boolean(message?.metadata?.edited || message?.edited),
+        editedAt: message?.metadata?.editedAt || message?.editedAt || null,
         attachments,
       };
     })

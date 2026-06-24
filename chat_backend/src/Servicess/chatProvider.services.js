@@ -123,6 +123,92 @@ const createS3DownloadUrl = ({
   return `https://${host}/${objectKey}?${canonicalQuery}&X-Amz-Signature=${signature}`;
 };
 
+const createS3UploadUrl = ({
+  bucket,
+  region,
+  accessKeyId,
+  secretAccessKey,
+  objectKey,
+  expiresSeconds = 300,
+}) => {
+  const host = `${bucket}.s3.${region}.amazonaws.com`;
+  const now = new Date();
+  const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, "");
+  const dateStamp = amzDate.slice(0, 8);
+  const credentialScope = `${dateStamp}/${region}/s3/aws4_request`;
+  const query = {
+    "X-Amz-Algorithm": "AWS4-HMAC-SHA256",
+    "X-Amz-Credential": `${accessKeyId}/${credentialScope}`,
+    "X-Amz-Date": amzDate,
+    "X-Amz-Expires": String(expiresSeconds),
+    "X-Amz-SignedHeaders": "host",
+  };
+  const canonicalQuery = Object.keys(query)
+    .sort()
+    .map((key) => `${encodeURIComponent(key)}=${encodeURIComponent(query[key])}`)
+    .join("&");
+  const canonicalRequest = [
+    "PUT",
+    `/${objectKey}`,
+    canonicalQuery,
+    `host:${host}\n`,
+    "host",
+    "UNSIGNED-PAYLOAD",
+  ].join("\n");
+  const stringToSign = [
+    "AWS4-HMAC-SHA256",
+    amzDate,
+    credentialScope,
+    hash(canonicalRequest),
+  ].join("\n");
+  const signingKey = getSignatureKey(secretAccessKey, dateStamp, region, "s3");
+  const signature = hmac(signingKey, stringToSign, "hex");
+
+  return `https://${host}/${objectKey}?${canonicalQuery}&X-Amz-Signature=${signature}`;
+};
+
+const signS3UrlIfNeeded = (value) => {
+  const rawUrl = String(value || "").trim();
+
+  if (!rawUrl || /^data:/i.test(rawUrl) || /^blob:/i.test(rawUrl)) {
+    return rawUrl || null;
+  }
+
+  let url;
+  try {
+    url = new URL(rawUrl);
+  } catch {
+    return rawUrl;
+  }
+
+  const bucket = process.env.AWS_BUCKET_NAME;
+  const region = process.env.AWS_BUCKET_REGION;
+  const accessKeyId = process.env.AWS_ACCESS_KEY_ID;
+  const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY;
+  const expectedHost = bucket && region ? `${bucket}.s3.${region}.amazonaws.com` : "";
+
+  if (
+    !bucket ||
+    !region ||
+    !accessKeyId ||
+    !secretAccessKey ||
+    url.hostname !== expectedHost
+  ) {
+    return rawUrl;
+  }
+
+  const objectKey = url.pathname.replace(/^\/+/, "");
+  if (!objectKey) return rawUrl;
+
+  return createS3DownloadUrl({
+    bucket,
+    region,
+    accessKeyId,
+    secretAccessKey,
+    objectKey,
+  });
+};
+
 const uploadToS3 = async ({
   buffer,
   fileName,
@@ -155,41 +241,19 @@ const uploadToS3 = async ({
   ].map((part) => encodeURIComponent(part)).join("/");
   const host = `${bucket}.s3.${region}.amazonaws.com`;
   const canonicalUri = `/${objectKey}`;
-  const payloadHash = hash(buffer);
-  const credentialScope = `${dateStamp}/${region}/s3/aws4_request`;
-  const canonicalHeaders =
-    `host:${host}\n` +
-    `x-amz-content-sha256:${payloadHash}\n` +
-    `x-amz-date:${amzDate}\n`;
-  const signedHeaders = "host;x-amz-content-sha256;x-amz-date";
-  const canonicalRequest = [
-    "PUT",
-    canonicalUri,
-    "",
-    canonicalHeaders,
-    signedHeaders,
-    payloadHash,
-  ].join("\n");
-  const stringToSign = [
-    "AWS4-HMAC-SHA256",
-    amzDate,
-    credentialScope,
-    hash(canonicalRequest),
-  ].join("\n");
-  const signingKey = getSignatureKey(secretAccessKey, dateStamp, region, "s3");
-  const signature = hmac(signingKey, stringToSign, "hex");
-  const authorization =
-    `AWS4-HMAC-SHA256 Credential=${accessKeyId}/${credentialScope}, ` +
-    `SignedHeaders=${signedHeaders}, Signature=${signature}`;
   const url = `https://${host}${canonicalUri}`;
-  const response = await fetch(url, {
+  const uploadUrl = createS3UploadUrl({
+    bucket,
+    region,
+    accessKeyId,
+    secretAccessKey,
+    objectKey,
+  });
+  const response = await fetch(uploadUrl, {
     method: "PUT",
     headers: {
-      Authorization: authorization,
       "Content-Type": contentType || "application/octet-stream",
       "Content-Length": String(buffer.length),
-      "x-amz-content-sha256": payloadHash,
-      "x-amz-date": amzDate,
     },
     body: buffer,
   });
@@ -272,7 +336,7 @@ const getDirectKey = (appName, firstUserId, secondUserId) => {
 const toUser = (identity, chatUser = null) => {
   const metadata = identity.metadata || {};
   const presence = metadata.presence || metadata.status || null;
-  const avatarUrl = chatUser?.avatarUrl || metadata.avatarUrl || null;
+  const avatarUrl = signS3UrlIfNeeded(chatUser?.avatarUrl || metadata.avatarUrl || null);
 
   return {
     id: String(identity.appUserId),
@@ -1481,6 +1545,63 @@ export const sendChatMessage = async ({ actor, chatId, text, replyTo, metadata }
   return messagePayload;
 };
 
+export const editChatMessage = async ({ actor, chatId, messageId, text }) => {
+  const identity = await ensureLocalIdentity(actor);
+  const conversation = await getConversationForMember({
+    chatId,
+    identityId: identity.id,
+    appName: actor.appName,
+  });
+  assertString(messageId, "messageId");
+  assertString(text, "text");
+
+  const message = await ChatMessage.findOne({
+    where: {
+      id: messageId,
+      conversationId: conversation.id,
+      senderIdentityId: identity.id,
+    },
+  });
+
+  if (!message) {
+    throw new ChatServiceError("Message not found or cannot be edited", {
+      status: 404,
+      code: "CHAT_MESSAGE_NOT_EDITABLE",
+    });
+  }
+
+  await message.update({
+    text: text.trim(),
+    metadata: {
+      ...(message.metadata || {}),
+      edited: true,
+      editedAt: new Date().toISOString(),
+    },
+  });
+
+  const fullMessage = await ChatMessage.findByPk(message.id, {
+    include: [
+      { model: ChatIdentity, as: "sender" },
+      {
+        model: ChatMessageReaction,
+        as: "reactions",
+        include: [{ model: ChatIdentity, as: "identity" }],
+      },
+    ],
+  });
+
+  await writeChatAuditLog({
+    appName: actor.appName,
+    appUserId: actor.appUserId,
+    provider,
+    action: "edit_message",
+    targetChatId: conversation.id,
+    metadata: { messageId: message.id },
+  });
+
+  return toMessage(fullMessage);
+};
+
 export const sendDirectChatMessage = async ({ actor, userId, text, metadata }) => {
   const conversation = await createDirectConversation({ actor, userId });
   const sentMessage = await sendChatMessage({
@@ -1687,7 +1808,7 @@ export const updateChatAvatar = async ({
   broadcastAvatarUpdate({
     appName: actor.appName,
     userId: String(actor.appUserId),
-    avatarUrl: normalizedAvatarUrl,
+    avatarUrl: user.avatarUrl,
     user,
   });
 

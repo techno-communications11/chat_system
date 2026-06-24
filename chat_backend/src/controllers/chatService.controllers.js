@@ -4,6 +4,7 @@ import {
   createChatChannel,
   createDirectConversation,
   createGroupConversation,
+  editChatMessage,
   getChatAuditLogs,
   getChatActor,
   getChatConnectionStatus,
@@ -376,6 +377,21 @@ export const postConversationMessage = async (req, res) => {
       metadata: req.body?.metadata,
     });
     return sendSuccess(res, "Message sent", data);
+  } catch (error) {
+    return sendError(res, error);
+  }
+};
+
+export const patchConversationMessage = async (req, res) => {
+  try {
+    const actor = getChatActor(req);
+    const data = await editChatMessage({
+      actor,
+      chatId: req.params.chatId,
+      messageId: req.params.messageId,
+      text: req.body?.text,
+    });
+    return sendSuccess(res, "Message edited", data);
   } catch (error) {
     return sendError(res, error);
   }

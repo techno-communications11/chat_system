@@ -5,9 +5,16 @@ import {
   Button,
   Chip,
   CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   Divider,
   IconButton,
   Link,
+  List,
+  ListItemButton,
+  ListItemText,
   Popover,
   Stack,
   TextField,
@@ -18,14 +25,18 @@ import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import AlternateEmailIcon from "@mui/icons-material/AlternateEmail";
 import AttachFileIcon from "@mui/icons-material/AttachFile";
 import CallIcon from "@mui/icons-material/Call";
+import CloseIcon from "@mui/icons-material/Close";
 import CodeIcon from "@mui/icons-material/Code";
+import EditIcon from "@mui/icons-material/Edit";
 import EmojiEmotionsIcon from "@mui/icons-material/EmojiEmotions";
+import ForwardIcon from "@mui/icons-material/Forward";
 import FormatBoldIcon from "@mui/icons-material/FormatBold";
 import FormatItalicIcon from "@mui/icons-material/FormatItalic";
 import GroupAddIcon from "@mui/icons-material/GroupAdd";
 import GroupsIcon from "@mui/icons-material/Groups";
 import InsertDriveFileIcon from "@mui/icons-material/InsertDriveFile";
 import MoreHorizIcon from "@mui/icons-material/MoreHoriz";
+import ReplyIcon from "@mui/icons-material/Reply";
 import SearchIcon from "@mui/icons-material/Search";
 import SendIcon from "@mui/icons-material/Send";
 import VideoCallIcon from "@mui/icons-material/VideoCall";
@@ -35,9 +46,11 @@ import {
   getBuddyName,
   getBuddySendId,
   getImageUrl,
+  getMessageText,
   getPhoneNumber,
 } from "./chatHelpers";
 import PinglyMark from "./PinglyMark";
+import { searchChatMessagesService } from "../Services/chat.services";
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 const BRAND = "#6F2DA8";
@@ -302,6 +315,29 @@ function ReadyToSendState({ selectedChat }) {
 // ─── Reaction emoji list ──────────────────────────────────────────────────────
 const REACTION_OPTIONS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
 
+const EMOJI_OPTIONS = [
+  "😀",
+  "😁",
+  "😂",
+  "😊",
+  "😍",
+  "😎",
+  "😢",
+  "😡",
+  "👍",
+  "👎",
+  "👏",
+  "🙏",
+  "💪",
+  "🎉",
+  "🔥",
+  "❤️",
+  "💯",
+  "✅",
+  "⭐",
+  "🚀",
+];
+
 const formatFileSize = (bytes) => {
   const size = Number(bytes);
   if (!Number.isFinite(size) || size <= 0) return "";
@@ -340,11 +376,20 @@ const getGroupMemberSummary = (chat) => {
 };
 
 // ─── Message row (Slack-style) ────────────────────────────────────────────────
-function MessageRow({ message, onReact, showAvatar = true, authorName }) {
+function MessageRow({
+  message,
+  onEdit,
+  onForward,
+  onReact,
+  onReply,
+  showAvatar = true,
+  authorName,
+}) {
   const [pickerAnchor, setPickerAnchor] = useState(null);
   const isMe = message.direction === "outbound";
 
   const handleReact = (emoji) => {
+    if (isMe) return;
     onReact(message.id, emoji);
     setPickerAnchor(null);
   };
@@ -358,19 +403,20 @@ function MessageRow({ message, onReact, showAvatar = true, authorName }) {
     <Box
       sx={{
         display: "flex",
+        justifyContent: isMe ? "flex-end" : "flex-start",
         gap: 1.25,
         px: 1,
         py: 0.625,
         borderRadius: "6px",
         position: "relative",
-        "&:hover": { bgcolor: "action.hover" },
+        "&:hover": { bgcolor: "transparent" },
         "&:hover .msg-toolbar": { opacity: 1 },
         mt: showAvatar ? 0.75 : 0,
       }}
     >
       {/* Avatar column */}
-      <Box sx={{ width: 34, flexShrink: 0 }}>
-        {showAvatar ? (
+      <Box sx={{ width: 34, flexShrink: 0, display: isMe ? "none" : "block" }}>
+        {showAvatar && !isMe ? (
           <Avatar
             sx={{
               width: 34,
@@ -388,9 +434,23 @@ function MessageRow({ message, onReact, showAvatar = true, authorName }) {
       </Box>
 
       {/* Content */}
-      <Box flex={1} minWidth={0}>
+      <Box
+        minWidth={0}
+        sx={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: isMe ? "flex-end" : "flex-start",
+          maxWidth: { xs: "82%", md: "68%" },
+        }}
+      >
         {showAvatar && (
-          <Box display="flex" alignItems="baseline" gap={0.875} mb={0.375}>
+          <Box
+            display="flex"
+            alignItems="baseline"
+            gap={0.875}
+            mb={0.375}
+            sx={{ justifyContent: isMe ? "flex-end" : "flex-start" }}
+          >
             <Typography fontSize={13.5} fontWeight={600} color="text.primary">
               {isMe ? "You" : authorName}
             </Typography>
@@ -400,17 +460,44 @@ function MessageRow({ message, onReact, showAvatar = true, authorName }) {
           </Box>
         )}
 
-        <Typography
-          fontSize={13.5}
-          color="text.primary"
-          lineHeight={1.55}
-          sx={{ whiteSpace: "pre-wrap" }}
+        <Box
+          sx={{
+            px: 1.4,
+            py: 0.9,
+            borderRadius: isMe ? "10px 2px 10px 10px" : "2px 10px 10px 10px",
+            bgcolor: isMe ? "#dcf8c6" : "#ffffff",
+            border: isMe ? "none" : "0.5px solid",
+            borderColor: "divider",
+            boxShadow: "0 1px 1px rgba(0,0,0,0.05)",
+            maxWidth: "100%",
+          }}
         >
-          {message.text}
-        </Typography>
+          <Typography
+            fontSize={13.5}
+            color="text.primary"
+            lineHeight={1.55}
+            sx={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}
+          >
+            {message.text}
+          </Typography>
+          {message.edited && (
+            <Typography
+              component="span"
+              fontSize={10}
+              color="text.secondary"
+              sx={{ display: "block", textAlign: "right", mt: 0.25 }}
+            >
+              edited
+            </Typography>
+          )}
+        </Box>
 
         {message.attachments?.length > 0 && (
-          <Stack spacing={0.75} mt={message.text ? 0.75 : 0}>
+          <Stack
+            spacing={0.75}
+            mt={message.text ? 0.75 : 0}
+            alignItems={isMe ? "flex-end" : "flex-start"}
+          >
             {message.attachments.map((file) => {
               const meta = [file.contentType, formatFileSize(file.size)]
                 .filter(Boolean)
@@ -481,7 +568,7 @@ function MessageRow({ message, onReact, showAvatar = true, authorName }) {
         )}
 
         {/* Reactions */}
-        {message.reactions?.length > 0 && (
+        {!isMe && message.reactions?.length > 0 && (
           <Box display="flex" gap={0.5} flexWrap="wrap" mt={0.75}>
             {message.reactions.map((r) => (
               <Box
@@ -522,7 +609,7 @@ function MessageRow({ message, onReact, showAvatar = true, authorName }) {
         sx={{
           position: "absolute",
           top: -14,
-          right: 8,
+          right: isMe ? 48 : 8,
           opacity: 0,
           transition: "opacity 0.12s",
           display: "flex",
@@ -534,7 +621,36 @@ function MessageRow({ message, onReact, showAvatar = true, authorName }) {
           p: 0.375,
         }}
       >
-        {REACTION_OPTIONS.slice(0, 3).map((emoji) => (
+        <Tooltip title="Reply">
+          <IconButton
+            size="small"
+            onClick={() => onReply(message)}
+            sx={{ width: 26, height: 26, borderRadius: "5px" }}
+          >
+            <ReplyIcon sx={{ fontSize: 15 }} />
+          </IconButton>
+        </Tooltip>
+        {isMe && (
+          <Tooltip title="Edit">
+            <IconButton
+              size="small"
+              onClick={() => onEdit(message)}
+              sx={{ width: 26, height: 26, borderRadius: "5px" }}
+            >
+              <EditIcon sx={{ fontSize: 15 }} />
+            </IconButton>
+          </Tooltip>
+        )}
+        <Tooltip title="Forward">
+          <IconButton
+            size="small"
+            onClick={() => onForward(message)}
+            sx={{ width: 26, height: 26, borderRadius: "5px" }}
+          >
+            <ForwardIcon sx={{ fontSize: 15 }} />
+          </IconButton>
+        </Tooltip>
+        {!isMe && REACTION_OPTIONS.slice(0, 3).map((emoji) => (
           <Box
             key={emoji}
             onClick={() => handleReact(emoji)}
@@ -553,6 +669,7 @@ function MessageRow({ message, onReact, showAvatar = true, authorName }) {
             {emoji}
           </Box>
         ))}
+        {!isMe && (
         <Tooltip title="More reactions">
           <IconButton
             size="small"
@@ -562,9 +679,11 @@ function MessageRow({ message, onReact, showAvatar = true, authorName }) {
             <EmojiEmotionsIcon sx={{ fontSize: 15 }} />
           </IconButton>
         </Tooltip>
+        )}
       </Box>
 
       {/* Full reaction picker */}
+      {!isMe && (
       <Popover
         open={Boolean(pickerAnchor)}
         anchorEl={pickerAnchor}
@@ -604,6 +723,7 @@ function MessageRow({ message, onReact, showAvatar = true, authorName }) {
           ))}
         </Stack>
       </Popover>
+      )}
     </Box>
   );
 }
@@ -634,11 +754,17 @@ function ToolBtn({ title, icon, disabled, onClick }) {
 
 // ─── Main ChatWindow ──────────────────────────────────────────────────────────
 export default function ChatWindow({
+  availableChats = [],
   chatBoxRef,
   chats,
   currentMessages,
+  editingMessage,
   handleFileUpload,
+  handleCancelComposerMode,
+  handleEditMessage,
+  handleForwardMessage,
   handleReaction,
+  handleReplyToMessage,
   handleSend,
   inputValue,
   mentionableUsers = [],
@@ -647,16 +773,26 @@ export default function ChatWindow({
   selectedChat,
   sendError,
   sending,
+  replyToMessage,
   onOpenAddMembers,
   setInputValue,
   setSelectedChat,
   uploading,
 }) {
   const [mentionAnchorEl, setMentionAnchorEl] = useState(null);
+  const [emojiAnchorEl, setEmojiAnchorEl] = useState(null);
+  const [forwardMessage, setForwardMessage] = useState(null);
+  const [searchAnchorEl, setSearchAnchorEl] = useState(null);
+  const [messageSearchTerm, setMessageSearchTerm] = useState("");
+  const [messageSearchResults, setMessageSearchResults] = useState([]);
+  const [messageSearchError, setMessageSearchError] = useState("");
+  const [messageSearchLoading, setMessageSearchLoading] = useState(false);
   const availability = selectedChat ? getAvailability(selectedChat.raw) : null;
   const phone = selectedChat ? getPhoneNumber(selectedChat.raw) : "";
   const groupMembers = selectedChat?.type === "channel" ? getGroupMembers(selectedChat) : [];
   const mentionPickerOpen = Boolean(mentionAnchorEl);
+  const emojiPickerOpen = Boolean(emojiAnchorEl);
+  const messageSearchOpen = Boolean(searchAnchorEl);
   const canSend = Boolean(inputValue.trim()) || pendingFiles.length > 0;
 
   const insertMention = (user) => {
@@ -664,6 +800,33 @@ export default function ChatWindow({
     const spacer = inputValue && !inputValue.endsWith(" ") ? " " : "";
     setInputValue(`${inputValue}${spacer}@${name} `);
     setMentionAnchorEl(null);
+  };
+
+  const insertEmoji = (emoji) => {
+    setInputValue(`${inputValue}${emoji}`);
+    setEmojiAnchorEl(null);
+  };
+
+  const runMessageSearch = async () => {
+    const search = messageSearchTerm.trim();
+    if (!search) return;
+
+    setMessageSearchLoading(true);
+    setMessageSearchError("");
+
+    try {
+      const response = await searchChatMessagesService({ search, limit: 25 });
+      const results =
+        response.data?.data?.messages ||
+        response.data?.data?.data ||
+        response.data?.data ||
+        [];
+      setMessageSearchResults(Array.isArray(results) ? results : []);
+    } catch (error) {
+      setMessageSearchError(error?.response?.data?.message || error.message || "Search failed.");
+    } finally {
+      setMessageSearchLoading(false);
+    }
   };
 
   // Group consecutive messages from the same author for Slack-style threading
@@ -764,7 +927,11 @@ export default function ChatWindow({
             </Box>
 
             <Stack direction="row" alignItems="center" spacing={0.5}>
-              <ToolBtn title="Search" icon={<SearchIcon sx={{ fontSize: 16 }} />} />
+              <ToolBtn
+                title="Search messages"
+                icon={<SearchIcon sx={{ fontSize: 16 }} />}
+                onClick={(event) => setSearchAnchorEl(event.currentTarget)}
+              />
               {selectedChat.type === "channel" && (
                 <ToolBtn
                   title="Add people"
@@ -990,6 +1157,8 @@ export default function ChatWindow({
                   <ToolBtn
                     title="Emoji"
                     icon={<EmojiEmotionsIcon sx={{ fontSize: 16 }} />}
+                    disabled={sending || uploading}
+                    onClick={(e) => setEmojiAnchorEl(e.currentTarget)}
                   />
                   <ToolBtn
                     title="Mention"
@@ -1086,6 +1255,49 @@ export default function ChatWindow({
                         </Button>
                       );
                     })}
+                  </Popover>
+
+                  <Popover
+                    open={emojiPickerOpen}
+                    anchorEl={emojiAnchorEl}
+                    onClose={() => setEmojiAnchorEl(null)}
+                    anchorOrigin={{ vertical: "top", horizontal: "left" }}
+                    transformOrigin={{ vertical: "bottom", horizontal: "left" }}
+                    PaperProps={{
+                      sx: {
+                        width: 244,
+                        borderRadius: "10px",
+                        border: "0.5px solid",
+                        borderColor: "divider",
+                        boxShadow: "0 8px 24px rgba(0,0,0,0.1)",
+                        p: 1,
+                      },
+                    }}
+                  >
+                    <Box
+                      sx={{
+                        display: "grid",
+                        gridTemplateColumns: "repeat(5, 1fr)",
+                        gap: 0.5,
+                      }}
+                    >
+                      {EMOJI_OPTIONS.map((emoji) => (
+                        <IconButton
+                          key={emoji}
+                          size="small"
+                          onClick={() => insertEmoji(emoji)}
+                          sx={{
+                            width: 38,
+                            height: 34,
+                            borderRadius: "7px",
+                            fontSize: 20,
+                            "&:hover": { bgcolor: BRAND_SOFT },
+                          }}
+                        >
+                          {emoji}
+                        </IconButton>
+                      ))}
+                    </Box>
                   </Popover>
                 </Stack>
 

@@ -71,6 +71,21 @@ export const sendConversationMessageService = (chatId, text, options = {}) =>
     getChatHeaders(),
   );
 
+export const editConversationMessageService = (chatId, messageId, text) =>
+  api.patch(
+    `/chat-service/conversations/${encodeURIComponent(chatId)}/messages/${encodeURIComponent(
+      messageId,
+    )}`,
+    { text },
+    getChatHeaders(),
+  );
+
+export const searchChatMessagesService = (params = {}) =>
+  api.get("/chat-service/messages/search", {
+    ...getChatHeaders(),
+    params,
+  });
+
 export const sendDirectMessageService = (userId, text, options = {}) =>
   api.post(
     `/chat-service/messages/direct/${encodeURIComponent(userId)}`,

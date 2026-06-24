@@ -19,6 +19,7 @@ import {
   markConversationRead,
   openDirectConversation,
   openGroupConversation,
+  patchConversationMessage,
   postBroadcastMessage,
   postConversationMessage,
   postDirectMessage,
@@ -86,6 +87,11 @@ chatServiceRouter.post(
   "/conversations/:chatId/messages",
   checkAuth,
   postConversationMessage
+);
+chatServiceRouter.patch(
+  "/conversations/:chatId/messages/:messageId",
+  checkAuth,
+  patchConversationMessage
 );
 chatServiceRouter.post("/messages/direct/:userId", checkAuth, postDirectMessage);
 chatServiceRouter.post("/messages/multiple", checkAuth, postMultiUserMessage);
