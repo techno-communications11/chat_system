@@ -43,11 +43,27 @@ export const initChatSocket = (httpServer, allowedOrigins) => {
           "chat_system",
       );
       socket.data.userId = String(
-        decoded.id || decoded.userId || decoded.user_id || "",
+        decoded.id ||
+          decoded.userId ||
+          decoded.user_id ||
+          decoded.appUserId ||
+          decoded.sub ||
+          "",
       );
-      socket.data.email = decoded.email || null;
+      socket.data.email =
+        decoded.email ||
+        decoded.userEmail ||
+        decoded.user_email ||
+        decoded.mail ||
+        decoded.preferred_username ||
+        null;
       socket.data.displayName =
-        decoded.name || decoded.displayName || decoded.username || null;
+        decoded.name ||
+        decoded.displayName ||
+        decoded.display_name ||
+        decoded.username ||
+        socket.data.email ||
+        null;
 
       if (!socket.data.userId) {
         next(new Error("Unauthorized"));
@@ -119,5 +135,56 @@ export const notifyConversationMessage = async ({
 
   for (const userId of participantUserIds) {
     emitToUser(appName, userId, "message:new", payload);
+  }
+};
+
+export const notifyConversationMessageUpdate = async ({
+  appName = "chat_system",
+  conversationId,
+  message,
+  participantUserIds = [],
+}) => {
+  const payload = {
+    chatId: String(conversationId),
+    message,
+  };
+
+  emitToConversation(appName, conversationId, "message:updated", payload);
+
+  for (const userId of participantUserIds) {
+    emitToUser(appName, userId, "message:updated", payload);
+  }
+};
+
+export const notifyMessageReaction = ({
+  appName = "chat_system",
+  conversationId,
+  targetUserId,
+  reaction,
+  message,
+}) => {
+  emitToUser(appName, targetUserId, "reaction:added", {
+    chatId: String(conversationId),
+    reaction,
+    message,
+  });
+};
+
+export const notifyConversationCall = async ({
+  appName = "chat_system",
+  conversationId,
+  call,
+  participantUserIds = [],
+  event = "call:started",
+}) => {
+  const payload = {
+    chatId: String(conversationId),
+    call,
+  };
+
+  emitToConversation(appName, conversationId, event, payload);
+
+  for (const userId of participantUserIds) {
+    emitToUser(appName, userId, event, payload);
   }
 };

@@ -4,6 +4,7 @@ import {
   addMessageReaction,
   createChannel,
   createRole,
+  endConversationCall,
   getChatMe,
   getChatUser,
   getConversationMessages,
@@ -20,6 +21,7 @@ import {
   openDirectConversation,
   openGroupConversation,
   patchConversationMessage,
+  patchConversationMessagePin,
   postBroadcastMessage,
   postConversationMessage,
   postDirectMessage,
@@ -28,6 +30,7 @@ import {
   removeMessageReaction,
   registerUser,
   searchMessages,
+  startConversationCall,
   updateChatStatus,
   updateChatAvatarController,
   updateConversation,
@@ -93,6 +96,11 @@ chatServiceRouter.patch(
   checkAuth,
   patchConversationMessage
 );
+chatServiceRouter.patch(
+  "/conversations/:chatId/messages/:messageId/pin",
+  checkAuth,
+  patchConversationMessagePin
+);
 chatServiceRouter.post("/messages/direct/:userId", checkAuth, postDirectMessage);
 chatServiceRouter.post("/messages/multiple", checkAuth, postMultiUserMessage);
 chatServiceRouter.post("/messages/broadcast", checkAuth, postBroadcastMessage);
@@ -100,6 +108,16 @@ chatServiceRouter.post(
   "/conversations/:chatId/files",
   checkAuth,
   uploadConversationFile
+);
+chatServiceRouter.post(
+  "/conversations/:chatId/calls",
+  checkAuth,
+  startConversationCall
+);
+chatServiceRouter.post(
+  "/conversations/:chatId/calls/:callId/end",
+  checkAuth,
+  endConversationCall
 );
 chatServiceRouter.post(
   "/conversations/:chatId/messages/:messageId/reactions",

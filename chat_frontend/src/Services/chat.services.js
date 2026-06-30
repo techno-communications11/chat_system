@@ -58,6 +58,13 @@ export const addGroupMembersService = (chatId, userIds) =>
     getChatHeaders(),
   );
 
+export const leaveGroupConversationService = (chatId) =>
+  api.post(
+    `/chat-service/conversations/${encodeURIComponent(chatId)}/leave`,
+    {},
+    getChatHeaders(),
+  );
+
 export const getChatMessagesService = (chatId, params = {}) =>
   api.get(`/chat-service/conversations/${encodeURIComponent(chatId)}/messages`, {
     ...getChatHeaders(),
@@ -77,6 +84,15 @@ export const editConversationMessageService = (chatId, messageId, text) =>
       messageId,
     )}`,
     { text },
+    getChatHeaders(),
+  );
+
+export const pinConversationMessageService = (chatId, messageId, pinned) =>
+  api.patch(
+    `/chat-service/conversations/${encodeURIComponent(chatId)}/messages/${encodeURIComponent(
+      messageId,
+    )}/pin`,
+    { pinned },
     getChatHeaders(),
   );
 
@@ -114,6 +130,22 @@ export const shareConversationFileService = (chatId, file) =>
         "x-file-size": String(file.size || 0),
       },
     },
+  );
+
+export const startConversationCallService = (chatId, type) =>
+  api.post(
+    `/chat-service/conversations/${encodeURIComponent(chatId)}/calls`,
+    { type },
+    getChatHeaders(),
+  );
+
+export const endConversationCallService = (chatId, callId) =>
+  api.post(
+    `/chat-service/conversations/${encodeURIComponent(chatId)}/calls/${encodeURIComponent(
+      callId,
+    )}/end`,
+    {},
+    getChatHeaders(),
   );
 
 export const addMessageReactionService = (chatId, messageId, emoji) =>

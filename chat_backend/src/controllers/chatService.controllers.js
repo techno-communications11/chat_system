@@ -17,6 +17,7 @@ import {
   listChatChannels,
   listChatGroups,
   markChatConversationRead,
+  pinChatMessage,
   removeGroupConversationMember,
   searchChatMessages,
   removeChatReaction,
@@ -25,6 +26,8 @@ import {
   sendChatMessage,
   sendDirectChatMessage,
   sendMultiUserMessage,
+  startChatCall,
+  endChatCall,
   updateChatPresence,
   updateChatAvatar,
   updateGroupConversation,
@@ -397,6 +400,21 @@ export const patchConversationMessage = async (req, res) => {
   }
 };
 
+export const patchConversationMessagePin = async (req, res) => {
+  try {
+    const actor = getChatActor(req);
+    const data = await pinChatMessage({
+      actor,
+      chatId: req.params.chatId,
+      messageId: req.params.messageId,
+      pinned: req.body?.pinned,
+    });
+    return sendSuccess(res, data.metadata?.pinned ? "Message pinned" : "Message unpinned", data);
+  } catch (error) {
+    return sendError(res, error);
+  }
+};
+
 export const postDirectMessage = async (req, res) => {
   try {
     const actor = getChatActor(req);
@@ -404,6 +422,7 @@ export const postDirectMessage = async (req, res) => {
       actor,
       userId: req.params.userId,
       text: req.body?.text,
+      replyTo: req.body?.replyTo,
       metadata: req.body?.metadata,
     });
     return sendSuccess(res, "Direct message sent", data);
@@ -454,6 +473,34 @@ export const uploadConversationFile = async (req, res) => {
       fileName: req.headers["x-file-name"],
     });
     return sendSuccess(res, "File sent", data);
+  } catch (error) {
+    return sendError(res, error);
+  }
+};
+
+export const startConversationCall = async (req, res) => {
+  try {
+    const actor = getChatActor(req);
+    const data = await startChatCall({
+      actor,
+      chatId: req.params.chatId,
+      type: req.body?.type,
+    });
+    return sendSuccess(res, "Call started", data, 201);
+  } catch (error) {
+    return sendError(res, error);
+  }
+};
+
+export const endConversationCall = async (req, res) => {
+  try {
+    const actor = getChatActor(req);
+    const data = await endChatCall({
+      actor,
+      chatId: req.params.chatId,
+      callId: req.params.callId,
+    });
+    return sendSuccess(res, "Call ended", data);
   } catch (error) {
     return sendError(res, error);
   }

@@ -176,6 +176,10 @@ const ensureSchemaCompatibility = async () => {
     type: DataTypes.JSON,
     allowNull: true,
   });
+  await addColumnIfMissing(queryInterface, "chat_conversation_participants", "lastReadAt", {
+    type: DataTypes.DATE,
+    allowNull: true,
+  });
   await addColumnIfMissing(queryInterface, "chat_groups", "metadata", {
     type: DataTypes.JSON,
     allowNull: true,

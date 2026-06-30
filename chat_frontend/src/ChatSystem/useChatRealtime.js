@@ -8,13 +8,35 @@ export function useChatRealtime({
   enabled = true,
   activeConversationId,
   onMessage,
+  onMessageUpdated,
+  onReactionAdded,
   onPresence,
   onAvatar,
+  onCallStarted,
+  onCallEnded,
 }) {
   const socketRef = useRef(null);
-  const handlersRef = useRef({ onMessage, onPresence, onAvatar });
+  const activeConversationIdRef = useRef(activeConversationId);
+  const handlersRef = useRef({
+    onMessage,
+    onMessageUpdated,
+    onReactionAdded,
+    onPresence,
+    onAvatar,
+    onCallStarted,
+    onCallEnded,
+  });
 
-  handlersRef.current = { onMessage, onPresence, onAvatar };
+  handlersRef.current = {
+    onMessage,
+    onMessageUpdated,
+    onReactionAdded,
+    onPresence,
+    onAvatar,
+    onCallStarted,
+    onCallEnded,
+  };
+  activeConversationIdRef.current = activeConversationId;
 
   useEffect(() => {
     if (!enabled) return undefined;
@@ -29,8 +51,23 @@ export function useChatRealtime({
 
     socketRef.current = socket;
 
+    socket.on("connect", () => {
+      const chatId = activeConversationIdRef.current;
+      if (chatId) {
+        socket.emit("join:conversation", String(chatId));
+      }
+    });
+
     socket.on("message:new", (payload) => {
       handlersRef.current.onMessage?.(payload);
+    });
+
+    socket.on("message:updated", (payload) => {
+      handlersRef.current.onMessageUpdated?.(payload);
+    });
+
+    socket.on("reaction:added", (payload) => {
+      handlersRef.current.onReactionAdded?.(payload);
     });
 
     socket.on("presence:update", (payload) => {
@@ -41,7 +78,16 @@ export function useChatRealtime({
       handlersRef.current.onAvatar?.(payload);
     });
 
+    socket.on("call:started", (payload) => {
+      handlersRef.current.onCallStarted?.(payload);
+    });
+
+    socket.on("call:ended", (payload) => {
+      handlersRef.current.onCallEnded?.(payload);
+    });
+
     return () => {
+      socket.off("connect");
       socket.disconnect();
       socketRef.current = null;
     };

@@ -46,8 +46,7 @@ export const getLastMessagePreview = (item, isChannel) => {
 
   if (text) return text;
   if (isChannel && !isDirectConversation(item, isChannel)) {
-    const count = getParticipantCount(item);
-    return count ? `${count} members` : "Group chat";
+    return "No messages yet";
   }
 
   const availability = getAvailability(item);

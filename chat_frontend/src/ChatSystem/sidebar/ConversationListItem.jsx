@@ -90,9 +90,9 @@ export default function ConversationListItem({
   const selected = String(selectedChat?.id || "") === String(itemId || "");
   const disabled = !itemId;
   const unreadCount = getUnreadCount(item);
-  const isDirect = isDirectConversation(item, isChannel);
   const deliveryState = getDeliveryState(item);
   const preview = getLastMessagePreview(item, isChannel);
+  const unreadLabel = unreadCount > 99 ? "99+" : unreadCount;
 
   return (
     <Box
@@ -158,21 +158,6 @@ export default function ConversationListItem({
             >
               {preview}
             </Typography>
-            <Box
-              component="span"
-              sx={{
-                px: 0.75,
-                py: 0.2,
-                borderRadius: 1,
-                bgcolor: isDirect ? "#eef4ff" : "#edf7ee",
-                color: isDirect ? "#215db0" : "#1f7a3d",
-                fontSize: 11,
-                fontWeight: 800,
-                flexShrink: 0,
-              }}
-            >
-              {isDirect ? "1:1" : "Group"}
-            </Box>
             {unreadCount > 0 && (
               <Box
                 component="span"
@@ -181,7 +166,7 @@ export default function ConversationListItem({
                   height: 18,
                   px: 0.5,
                   borderRadius: "999px",
-                  bgcolor: "#d32f2f",
+                  bgcolor: "#25D366",
                   color: "#ffffff",
                   fontSize: 10,
                   lineHeight: "18px",
@@ -190,7 +175,7 @@ export default function ConversationListItem({
                   flexShrink: 0,
                 }}
               >
-                {unreadCount}
+                {unreadLabel}
               </Box>
             )}
           </Box>

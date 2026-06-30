@@ -48,12 +48,16 @@ import {
   addMessageReactionService,
   createGroupChatService,
   editConversationMessageService,
+  leaveGroupConversationService,
   markConversationReadService,
   openDirectChatService,
+  pinConversationMessageService,
   removeMessageReactionService,
   sendConversationMessageService,
   sendDirectMessageService,
   shareConversationFileService,
+  startConversationCallService,
+  endConversationCallService,
   updateChatAvatarService,
   updateChatStatusService,
 } from "../Services/chat.services";
@@ -66,6 +70,7 @@ export default function ChatSystem({ standalone = false }) {
   const initialFetchStartedRef = useRef(false);
   const loadedChatHistoryRef = useRef(new Set());
   const readConversationKeysRef = useRef(new Set());
+  const handledRealtimeMessageKeysRef = useRef(new Set());
 
   const [, setTab] = useState("conversations");
   const [buddies, setBuddies] = useState([]);
@@ -94,6 +99,15 @@ export default function ChatSystem({ standalone = false }) {
   const [currentStatus, setCurrentStatus] = useState("online");
   const [statusSaving, setStatusSaving] = useState(false);
   const [avatarUploading, setAvatarUploading] = useState(false);
+  const [activeCall, setActiveCall] = useState(null);
+  const [callStarting, setCallStarting] = useState(false);
+  const [mutedGroupIds, setMutedGroupIds] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem("chat_muted_group_ids") || "[]");
+    } catch {
+      return [];
+    }
+  });
   const [profileUser, setProfileUser] = useState(() => {
     const tokenUser = getTokenUser();
 
@@ -323,8 +337,32 @@ export default function ChatSystem({ standalone = false }) {
     [visibleBuddies, visibleDirectChannels, visibleGroupChannels],
   );
   const totalUnreadCount = useMemo(
-    () =>
-      conversationItems.reduce((total, item) => total + getUnreadCount(item), 0),
+    () => {
+      const countsByConversation = new Map();
+
+      conversationItems.forEach((item) => {
+        const conversationKey =
+          item?.directConversationId ||
+          item?.chat_id ||
+          item?.chatId ||
+          getChannelId(item) ||
+          getBuddySendId(item) ||
+          getBuddyEmail(item);
+
+        if (!conversationKey) return;
+
+        const key = String(conversationKey);
+        countsByConversation.set(
+          key,
+          Math.max(countsByConversation.get(key) || 0, getUnreadCount(item)),
+        );
+      });
+
+      return Array.from(countsByConversation.values()).reduce(
+        (total, count) => total + count,
+        0,
+      );
+    },
     [conversationItems],
   );
 
@@ -334,6 +372,23 @@ export default function ChatSystem({ standalone = false }) {
 
       const senderId = getMessageSenderId(message);
       const isOwnMessage = senderId && senderId === currentUserId;
+      const messageId =
+        message?.message_id ||
+        message?.messageId ||
+        message?.id ||
+        message?.createdAt ||
+        message?.timestamp ||
+        "";
+      const realtimeMessageKey = `${String(chatId)}:${String(messageId)}`;
+
+      if (messageId && handledRealtimeMessageKeysRef.current.has(realtimeMessageKey)) {
+        return;
+      }
+
+      if (messageId) {
+        handledRealtimeMessageKeysRef.current.add(realtimeMessageKey);
+      }
+
       const localKey = resolveLocalChatKey({
         chatId,
         channels,
@@ -353,6 +408,7 @@ export default function ChatSystem({ standalone = false }) {
           String(selectedChat.id) === String(chatId)) ||
         (selectedChat?.type === "person" &&
           String(selectedChat.chatId || "") === String(chatId));
+      const shouldTreatAsRead = isActiveChat && !document.hidden;
 
       if (localKey) {
         setMessagesByChat((prev) => {
@@ -372,8 +428,9 @@ export default function ChatSystem({ standalone = false }) {
         });
       }
 
-      setChannels((prev) =>
-        prev.map((channel) => {
+      setChannels((prev) => {
+        let matchedExistingConversation = false;
+        const nextChannels = prev.map((channel) => {
           const channelId = String(getChannelId(channel));
           const conversationId = String(
             channel?.chat_id || channel?.chatId || channel?.id || "",
@@ -383,15 +440,55 @@ export default function ChatSystem({ standalone = false }) {
             return channel;
           }
 
+          matchedExistingConversation = true;
           return {
             ...channel,
-            unreadCount: isActiveChat || isOwnMessage ? 0 : getUnreadCount(channel) + 1,
+            unreadCount: shouldTreatAsRead || isOwnMessage ? 0 : getUnreadCount(channel) + 1,
             lastMessage: message,
           };
-        }),
-      );
+        });
+
+        if (matchedExistingConversation || isOwnMessage) {
+          return nextChannels;
+        }
+
+        const sender = message?.sender || {};
+        const senderUser = {
+          ...(typeof sender === "object" ? sender : {}),
+          id: senderId,
+          user_id: senderId,
+          name:
+            sender?.name ||
+            sender?.display_name ||
+            sender?.displayName ||
+            buddies.find((buddy) => getBuddySendId(buddy) === senderId)?.name ||
+            "Chat user",
+          email:
+            sender?.email ||
+            sender?.email_id ||
+            buddies.find((buddy) => getBuddySendId(buddy) === senderId)?.email ||
+            "",
+        };
+
+        return [
+          {
+            id: String(chatId),
+            chat_id: String(chatId),
+            type: "direct",
+            isDirect: true,
+            title: senderUser.name,
+            participants: [senderUser, currentUser].filter(Boolean),
+            unreadCount: shouldTreatAsRead ? 0 : 1,
+            unread_count: shouldTreatAsRead ? 0 : 1,
+            lastMessage: message,
+          },
+          ...nextChannels,
+        ];
+      });
 
       if (!isOwnMessage && (!isActiveChat || document.hidden)) {
+        if (mutedGroupIds.includes(String(chatId))) return;
+
         const senderName =
           message?.sender?.name ||
           message?.sender?.display_name ||
@@ -411,11 +508,94 @@ export default function ChatSystem({ standalone = false }) {
         });
       }
 
-      if (isActiveChat && !isOwnMessage) {
+      if (shouldTreatAsRead && !isOwnMessage) {
         markConversationReadService(chatId).catch(() => {});
       }
     },
-    [buddies, channels, currentUserId, navigate, selectedChat],
+    [buddies, channels, currentUser, currentUserId, mutedGroupIds, navigate, selectedChat],
+  );
+
+  const handleRealtimeMessageUpdated = useCallback(
+    ({ chatId, message }) => {
+      if (!chatId || !message) return;
+
+      const localKey = resolveLocalChatKey({
+        chatId,
+        channels,
+        buddies,
+        currentUserId,
+      });
+      const normalizedMessage = normalizeRealtimeMessage(message, {
+        ...(selectedChat || {}),
+        id: localKey || selectedChat?.id,
+        currentUserId,
+      });
+
+      if (!localKey || !normalizedMessage) return;
+
+      setMessagesByChat((prev) => ({
+        ...prev,
+        [localKey]: (prev[localKey] || []).map((item) =>
+          String(item.id) === String(normalizedMessage.id)
+            ? { ...item, ...normalizedMessage }
+            : item,
+        ),
+      }));
+    },
+    [buddies, channels, currentUserId, selectedChat],
+  );
+
+  const handleRealtimeReactionAdded = useCallback(
+    ({ chatId, reaction, message }) => {
+      const actorId = String(
+        reaction?.actor?.id ||
+          reaction?.actor?.userId ||
+          reaction?.actor?.user_id ||
+          reaction?.actor?.appUserId ||
+          "",
+      );
+      const actorEmail = String(
+        reaction?.actor?.email ||
+          reaction?.actor?.email_id ||
+          reaction?.actor?.mailid ||
+          "",
+      ).toLowerCase();
+      if (
+        !chatId ||
+        !reaction?.emoji ||
+        mutedGroupIds.includes(String(chatId)) ||
+        (actorId && actorId === currentUserId) ||
+        (actorEmail && actorEmail === currentUserEmail)
+      ) {
+        return;
+      }
+
+      const localKey = resolveLocalChatKey({
+        chatId,
+        channels,
+        buddies,
+        currentUserId,
+      });
+      const actorName =
+        reaction?.actor?.name ||
+        reaction?.actor?.display_name ||
+        reaction?.actor?.email ||
+        "Someone";
+      const messagePreview = getMessageText(message);
+
+      showChatNotification({
+        title: `${actorName} reacted ${reaction.emoji}`,
+        body: messagePreview ? `To your message: ${messagePreview}` : "To your message",
+        icon: getImageUrl(reaction?.actor),
+        tag: `reaction-${chatId}-${message?.id || message?.message_id || ""}`,
+        onClick: () => {
+          if (localKey) {
+            navigate(`${CHAT_APP_BASE_PATH}/${encodeURIComponent(localKey)}`);
+          }
+        },
+      });
+    },
+    [buddies, channels, currentUserEmail, currentUserId, mutedGroupIds, navigate],
   );
 
   const handleRealtimePresence = useCallback(({ userId, presence, user }) => {
@@ -462,12 +642,38 @@ export default function ChatSystem({ standalone = false }) {
     }
   }, [currentUserId]);
 
+  const handleRealtimeCallStarted = useCallback(
+    ({ chatId, call }) => {
+      if (!chatId || !call) return;
+
+      const isActiveChat =
+        (selectedChat?.type === "channel" &&
+          String(selectedChat.id) === String(chatId)) ||
+        (selectedChat?.type === "person" &&
+          String(selectedChat.chatId || "") === String(chatId));
+
+      if (isActiveChat) {
+        setActiveCall(call);
+      }
+    },
+    [selectedChat],
+  );
+
+  const handleRealtimeCallEnded = useCallback(({ call }) => {
+    if (!call?.id) return;
+    setActiveCall((prev) => (prev?.id === call.id ? null : prev));
+  }, []);
+
   useChatRealtime({
     enabled: Boolean(currentUserId),
     activeConversationId,
     onMessage: handleRealtimeMessage,
+    onMessageUpdated: handleRealtimeMessageUpdated,
+    onReactionAdded: handleRealtimeReactionAdded,
     onPresence: handleRealtimePresence,
     onAvatar: handleRealtimeAvatar,
+    onCallStarted: handleRealtimeCallStarted,
+    onCallEnded: handleRealtimeCallEnded,
   });
 
   useEffect(() => {
@@ -625,17 +831,6 @@ export default function ChatSystem({ standalone = false }) {
         (conversation) => !isSelfConversation(conversation),
       );
       const readKeys = readConversationKeysRef.current;
-      const activeChatId = String(
-        selectedChat?.type === "channel" ? selectedChat.id : selectedChat?.chatId || "",
-      );
-      const activeUserId = String(
-        selectedChat?.type === "person" ? selectedChat.id : "",
-      );
-      const activeEmail = String(
-        selectedChat?.type === "person"
-          ? selectedChat.subtitle || getBuddyEmail(selectedChat.raw)
-          : "",
-      ).toLowerCase();
       const shouldKeepRead = (conversation) => {
         const conversationIds = [
           conversation?.chat_id,
@@ -650,20 +845,14 @@ export default function ChatSystem({ standalone = false }) {
           : [];
 
         return (
-          conversationIds.some(
-            (value) => readKeys.has(`chat:${value}`) || (activeChatId && value === activeChatId),
-          ) ||
+          conversationIds.some((value) => readKeys.has(`chat:${value}`)) ||
           participants.some((participant) => {
             const participantId = String(getBuddySendId(participant) || "");
             const participantEmail = String(getBuddyEmail(participant) || "").toLowerCase();
 
             return (
-              (participantId &&
-                (readKeys.has(`user:${participantId}`) ||
-                  (activeUserId && participantId === activeUserId))) ||
-              (participantEmail &&
-                (readKeys.has(`email:${participantEmail}`) ||
-                  (activeEmail && participantEmail === activeEmail)))
+              (participantId && readKeys.has(`user:${participantId}`)) ||
+              (participantEmail && readKeys.has(`email:${participantEmail}`))
             );
           })
         );
@@ -683,10 +872,8 @@ export default function ChatSystem({ standalone = false }) {
         const userId = String(getBuddySendId(user) || "");
         const userEmail = String(getBuddyEmail(user) || "").toLowerCase();
         const shouldKeepUserRead =
-          (userId &&
-            (readKeys.has(`user:${userId}`) || (activeUserId && userId === activeUserId))) ||
-          (userEmail &&
-            (readKeys.has(`email:${userEmail}`) || (activeEmail && userEmail === activeEmail)));
+          (userId && readKeys.has(`user:${userId}`)) ||
+          (userEmail && readKeys.has(`email:${userEmail}`));
 
         return shouldKeepUserRead
           ? { ...user, unreadCount: 0, unread_count: 0, unread: 0, unreadMessages: 0 }
@@ -1022,6 +1209,45 @@ export default function ChatSystem({ standalone = false }) {
     }
   };
 
+  const handleToggleGroupMute = (chatId) => {
+    if (!chatId) return;
+
+    setMutedGroupIds((prev) => {
+      const normalizedChatId = String(chatId);
+      const next = prev.includes(normalizedChatId)
+        ? prev.filter((id) => id !== normalizedChatId)
+        : [...prev, normalizedChatId];
+
+      localStorage.setItem("chat_muted_group_ids", JSON.stringify(next));
+      return next;
+    });
+  };
+
+  const handleLeaveGroup = async (chatId) => {
+    if (!chatId) return;
+
+    try {
+      await leaveGroupConversationService(chatId);
+      setChannels((prev) =>
+        prev.filter((channel) => String(getChannelId(channel)) !== String(chatId)),
+      );
+      setMessagesByChat((prev) => {
+        const next = { ...prev };
+        delete next[String(chatId)];
+        return next;
+      });
+      setMutedGroupIds((prev) => {
+        const next = prev.filter((id) => id !== String(chatId));
+        localStorage.setItem("chat_muted_group_ids", JSON.stringify(next));
+        return next;
+      });
+      setSelectedChat(null);
+      navigate(CHAT_APP_BASE_PATH);
+    } catch (error) {
+      setSendError(normalizeChatError(error));
+    }
+  };
+
   const handleStatusChange = async (presence) => {
     if (statusSaving) return;
 
@@ -1072,6 +1298,64 @@ export default function ChatSystem({ standalone = false }) {
       setLoadError(normalizeChatError(error));
     } finally {
       setAvatarUploading(false);
+    }
+  };
+
+  const handleStartConversationCall = async (type) => {
+    if (!selectedChat || callStarting) return;
+
+    setCallStarting(true);
+    setSendError("");
+
+    try {
+      let chatId =
+        selectedChat.type === "channel" ? selectedChat.id : selectedChat.chatId;
+
+      if (!chatId && selectedChat.type === "person") {
+        const openResponse = await openDirectChatService(selectedChat.id);
+        chatId =
+          openResponse.data?.data?.chat_id ||
+          openResponse.data?.data?.data?.chat_id ||
+          null;
+
+        if (chatId) {
+          setSelectedChat((prev) =>
+            prev?.id === selectedChat.id ? { ...prev, chatId } : prev
+          );
+        }
+      }
+
+      if (!chatId) {
+        setSendError("Open this conversation before starting a call.");
+        return;
+      }
+
+      const response = await startConversationCallService(chatId, type);
+      const call = response.data?.data;
+      setActiveCall(call);
+
+      if (call?.callUrl) {
+        window.open(call.callUrl, "_blank", "noopener,noreferrer");
+      }
+    } catch (error) {
+      setSendError(normalizeChatError(error));
+    } finally {
+      setCallStarting(false);
+    }
+  };
+
+  const handleEndActiveCall = async () => {
+    if (!activeCall?.id || !activeCall?.chatId) {
+      setActiveCall(null);
+      return;
+    }
+
+    try {
+      await endConversationCallService(activeCall.chatId, activeCall.id);
+    } catch (error) {
+      setSendError(normalizeChatError(error));
+    } finally {
+      setActiveCall(null);
     }
   };
 
@@ -1227,24 +1511,7 @@ export default function ChatSystem({ standalone = false }) {
       return;
     }
 
-    setMessagesByChat((prev) => ({
-      ...prev,
-      [selectedChat.id]: (prev[selectedChat.id] || []).map((message) => {
-        if (String(message.id) !== String(messageId)) return message;
-
-        const reactions = message.reactions || [];
-        const existingReaction = reactions.find(
-          (reaction) => reaction.emoji === emoji
-        );
-
-        return {
-          ...message,
-          reactions: existingReaction
-            ? reactions.filter((reaction) => reaction.emoji !== emoji)
-            : [...reactions, { emoji, count: 1, reacted: true }],
-        };
-      }),
-    }));
+    await refreshSelectedChatMessages(chatId);
   };
 
   const handleReplyToMessage = (message) => {
@@ -1257,6 +1524,41 @@ export default function ChatSystem({ standalone = false }) {
     setReplyToMessage(null);
     setEditingMessage(message);
     setInputValue(message.text || "");
+  };
+
+  const handlePinMessage = async (message) => {
+    if (!selectedChat || !message?.id) return;
+
+    const chatId =
+      selectedChat.type === "channel" ? selectedChat.id : selectedChat.chatId;
+
+    if (!chatId) {
+      setSendError("Open this conversation before pinning a message.");
+      return;
+    }
+
+    const pinned = !message.metadata?.pinned;
+
+    try {
+      const response = await pinConversationMessageService(chatId, message.id, pinned);
+      const updatedMessage = normalizeRealtimeMessage(response.data?.data, {
+        ...selectedChat,
+        currentUserId,
+      });
+
+      if (!updatedMessage) return;
+
+      setMessagesByChat((prev) => ({
+        ...prev,
+        [selectedChat.id]: (prev[selectedChat.id] || []).map((item) =>
+          String(item.id) === String(updatedMessage.id)
+            ? { ...item, ...updatedMessage }
+            : item,
+        ),
+      }));
+    } catch (error) {
+      setSendError(normalizeChatError(error));
+    }
   };
 
   const handleCancelComposerMode = () => {
@@ -1324,18 +1626,25 @@ export default function ChatSystem({ standalone = false }) {
         setTab={setTab}
       />
       <ChatWindow
+        activeCall={activeCall}
         chatBoxRef={chatBoxRef}
+        callStarting={callStarting}
         availableChats={conversationItems}
+        currentUser={currentUser}
         editingMessage={editingMessage}
         currentMessages={currentMessages}
         handleFileUpload={handleFileUpload}
         handleCancelComposerMode={handleCancelComposerMode}
         handleEditMessage={handleEditMessage}
         handleForwardMessage={handleForwardMessage}
+        handlePinMessage={handlePinMessage}
         handleReaction={handleReaction}
         handleReplyToMessage={handleReplyToMessage}
         handleSend={handleSend}
+        onEndActiveCall={handleEndActiveCall}
+        onLeaveGroup={handleLeaveGroup}
         inputValue={inputValue}
+        mutedGroupIds={mutedGroupIds}
         mentionableUsers={selectedMentionableUsers}
         pendingFiles={pendingFiles}
         removePendingFile={removePendingFile}
@@ -1343,7 +1652,9 @@ export default function ChatSystem({ standalone = false }) {
         sendError={sendError}
         sending={sending}
         replyToMessage={replyToMessage}
+        onStartConversationCall={handleStartConversationCall}
         onOpenAddMembers={openAddMembersDialog}
+        onToggleGroupMute={handleToggleGroupMute}
         setInputValue={setInputValue}
         setSelectedChat={setSelectedChat}
         uploading={uploading}

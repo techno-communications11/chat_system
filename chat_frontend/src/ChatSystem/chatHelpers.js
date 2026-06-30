@@ -284,9 +284,18 @@ export const getMessageSenderId = (message) => {
   }
 
   return String(
+      message?.senderId ||
+      message?.sender_id ||
+      message?.senderIdentityId ||
+      message?.sender_identity_id ||
+      sender?.appUserId ||
+      sender?.app_user_id ||
+      sender?.userId ||
       sender?.id ||
       sender?.user_id ||
       sender?.chatIdentityId ||
+      sender?.email_id ||
+      sender?.mailid ||
       sender?.email ||
       ""
   );
@@ -299,6 +308,87 @@ export const getMessageTime = (message) =>
   message?.createdAt ||
   message?.timestamp ||
   new Date().toISOString();
+
+export const formatMessageTime = (value) => {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+
+  return new Intl.DateTimeFormat(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(date);
+};
+
+export const getMessageDayKey = (value) => {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+
+  return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+};
+
+export const formatMessageDateLabel = (value) => {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+
+  const today = new Date();
+  const startOfToday = new Date(
+    today.getFullYear(),
+    today.getMonth(),
+    today.getDate(),
+  );
+  const startOfMessageDay = new Date(
+    date.getFullYear(),
+    date.getMonth(),
+    date.getDate(),
+  );
+  const dayDifference = Math.round(
+    (startOfToday - startOfMessageDay) / (24 * 60 * 60 * 1000),
+  );
+
+  if (dayDifference === 0) return "Today";
+  if (dayDifference === 1) return "Yesterday";
+
+  return new Intl.DateTimeFormat(undefined, {
+    day: "numeric",
+    month: "long",
+    year: date.getFullYear() === today.getFullYear() ? undefined : "numeric",
+  }).format(date);
+};
+
+const normalizeMessageReactions = (reactions = [], currentUserId = "") => {
+  const reactionsByEmoji = new Map();
+
+  reactions.forEach((reaction) => {
+    const emoji = reaction?.emoji;
+    if (!emoji) return;
+
+    const reactionUserId = String(
+      reaction?.userId ||
+        reaction?.user_id ||
+        reaction?.chatIdentityId ||
+        reaction?.chat_identity_id ||
+        "",
+    );
+    const existing = reactionsByEmoji.get(emoji) || {
+      emoji,
+      count: 0,
+      reacted: false,
+      users: [],
+    };
+
+    reactionsByEmoji.set(emoji, {
+      ...existing,
+      count: existing.count + (Number(reaction?.count) || 1),
+      reacted:
+        existing.reacted ||
+        Boolean(reaction?.reacted) ||
+        Boolean(currentUserId && reactionUserId === String(currentUserId)),
+      users: reactionUserId ? [...existing.users, reactionUserId] : existing.users,
+    });
+  });
+
+  return Array.from(reactionsByEmoji.values());
+};
 
 export const normalizeChatMessages = (payload, selectedChat) => {
   const messages = getArrayPayload(payload?.messages ? payload.messages : payload);
@@ -318,14 +408,25 @@ export const normalizeChatMessages = (payload, selectedChat) => {
           `${getMessageTime(message)}-${index}`,
         text: text || (attachments.length ? "" : "[Unsupported message]"),
         sentAt: getMessageTime(message),
+        timestamp: formatMessageTime(getMessageTime(message)),
+        authorId: senderId,
+        authorName:
+          message?.sender?.name ||
+          message?.sender?.display_name ||
+          message?.sender?.displayName ||
+          message?.sender?.email ||
+          "Chat user",
+        authorAvatarUrl: getImageUrl(message?.sender),
         direction:
-          message?.direction ||
-          (senderId && currentUserId && senderId === currentUserId
-            ? "outbound"
-            : senderId && selectedId && senderId === selectedId
-            ? "inbound"
-            : "outbound"),
-        reactions: message?.reactions || [],
+          senderId && currentUserId
+            ? senderId === currentUserId
+              ? "outbound"
+              : "inbound"
+            : message?.direction ||
+              (senderId && selectedId && senderId === selectedId
+                ? "inbound"
+                : "outbound"),
+        reactions: normalizeMessageReactions(message?.reactions || [], currentUserId),
         metadata: message?.metadata || {},
         mentions: message?.metadata?.mentions || message?.mentions || [],
         replyTo: message?.replyTo || message?.reply_to || message?.replyToMessageId || null,

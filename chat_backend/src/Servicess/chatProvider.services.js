@@ -23,7 +23,10 @@ import { normalizeAvatarUrl } from "./chatAvatar.services.js";
 import {
   broadcastAvatarUpdate,
   broadcastPresenceUpdate,
+  notifyConversationCall,
   notifyConversationMessage,
+  notifyConversationMessageUpdate,
+  notifyMessageReaction,
 } from "../realtime/chatSocket.js";
 
 const provider = "local_chat";
@@ -71,6 +74,24 @@ const hmac = (key, value, encoding) =>
 
 const hash = (value, encoding = "hex") =>
   crypto.createHash("sha256").update(value).digest(encoding);
+
+const normalizeCallType = (value) => {
+  const type = String(value || "audio").toLowerCase();
+  return type === "video" ? "video" : "audio";
+};
+
+const buildCallRoomUrl = ({ appName, conversationId, callId }) => {
+  const roomName = [
+    normalizeAppName(appName),
+    "chat",
+    String(conversationId),
+    String(callId),
+  ]
+    .join("-")
+    .replace(/[^a-zA-Z0-9-]/g, "-");
+
+  return `https://meet.jit.si/${roomName}`;
+};
 
 const getSignatureKey = (secretKey, dateStamp, region, service) => {
   const kDate = hmac(`AWS4${secretKey}`, dateStamp);
@@ -390,6 +411,29 @@ const toMessage = (message) => ({
   updatedAt: message.updatedAt,
 });
 
+const getMessageWithReactions = (messageId) =>
+  ChatMessage.findByPk(messageId, {
+    include: [
+      { model: ChatIdentity, as: "sender" },
+      {
+        model: ChatMessageReaction,
+        as: "reactions",
+        include: [{ model: ChatIdentity, as: "identity" }],
+      },
+    ],
+  });
+
+const getConversationParticipantUserIds = async (conversationId) => {
+  const participants = await ChatConversationParticipant.findAll({
+    where: { conversationId },
+    include: [{ model: ChatIdentity, as: "identity" }],
+  });
+
+  return participants
+    .map((participant) => participant.identity?.appUserId)
+    .filter(Boolean);
+};
+
 const toConversation = async (conversation, currentIdentityId) => {
   const participants = await ChatConversationParticipant.findAll({
     where: { conversationId: conversation.id },
@@ -470,12 +514,22 @@ export const getChatActor = (req) => ({
     req.user?.id ||
     req.user?.userId ||
     req.user?.user_id ||
+    req.user?.appUserId ||
+    req.user?.sub ||
     req.body?.appUserId ||
     null,
-  appUserEmail: req.user?.email || req.body?.appUserEmail || null,
+  appUserEmail:
+    req.user?.email ||
+    req.user?.userEmail ||
+    req.user?.user_email ||
+    req.user?.mail ||
+    req.user?.preferred_username ||
+    req.body?.appUserEmail ||
+    null,
   displayName:
     req.user?.name ||
     req.user?.displayName ||
+    req.user?.display_name ||
     req.user?.username ||
     req.body?.displayName ||
     null,
@@ -1075,9 +1129,10 @@ export const leaveChatConversation = async ({ actor, chatId }) => {
 export const markChatConversationRead = async ({ actor, chatId }) => {
   const identity = await ensureLocalIdentity(actor);
   await getConversationForMember({ chatId, identityId: identity.id, appName: actor.appName });
+  const readAt = new Date();
 
   await ChatConversationParticipant.update(
-    { lastReadAt: new Date() },
+    { lastReadAt: readAt },
     {
       where: {
         conversationId: chatId,
@@ -1089,7 +1144,7 @@ export const markChatConversationRead = async ({ actor, chatId }) => {
   return {
     chatId: String(chatId),
     unreadCount: 0,
-    readAt: new Date().toISOString(),
+    readAt: readAt.toISOString(),
   };
 };
 
@@ -1602,12 +1657,90 @@ export const editChatMessage = async ({ actor, chatId, messageId, text }) => {
   return toMessage(fullMessage);
 };
 
-export const sendDirectChatMessage = async ({ actor, userId, text, metadata }) => {
+export const pinChatMessage = async ({ actor, chatId, messageId, pinned = true }) => {
+  const identity = await ensureLocalIdentity(actor);
+  const conversation = await getConversationForMember({
+    chatId,
+    identityId: identity.id,
+    appName: actor.appName,
+  });
+  assertString(messageId, "messageId");
+
+  const message = await ChatMessage.findOne({
+    where: {
+      id: messageId,
+      conversationId: conversation.id,
+    },
+  });
+
+  if (!message) {
+    throw new ChatServiceError("Message not found", {
+      status: 404,
+      code: "CHAT_MESSAGE_NOT_FOUND",
+    });
+  }
+
+  const shouldPin = Boolean(pinned);
+  await message.update({
+    metadata: {
+      ...(message.metadata || {}),
+      pinned: shouldPin,
+      pinnedAt: shouldPin ? new Date().toISOString() : null,
+      pinnedBy: shouldPin
+        ? {
+            id: String(identity.appUserId || ""),
+            name: identity.displayName || actor.displayName || actor.email || "Chat user",
+            email: identity.email || actor.email || "",
+          }
+        : null,
+    },
+  });
+
+  const fullMessage = await ChatMessage.findByPk(message.id, {
+    include: [
+      { model: ChatIdentity, as: "sender" },
+      {
+        model: ChatMessageReaction,
+        as: "reactions",
+        include: [{ model: ChatIdentity, as: "identity" }],
+      },
+    ],
+  });
+  const messagePayload = toMessage(fullMessage);
+  const participants = await ChatConversationParticipant.findAll({
+    where: { conversationId: conversation.id },
+    include: [{ model: ChatIdentity, as: "identity" }],
+  });
+  const participantUserIds = participants
+    .map((participant) => participant.identity?.appUserId)
+    .filter(Boolean);
+
+  await writeChatAuditLog({
+    appName: actor.appName,
+    appUserId: actor.appUserId,
+    provider,
+    action: shouldPin ? "pin_message" : "unpin_message",
+    targetChatId: conversation.id,
+    metadata: { messageId: message.id },
+  });
+
+  await notifyConversationMessageUpdate({
+    appName: actor.appName,
+    conversationId: conversation.id,
+    message: messagePayload,
+    participantUserIds,
+  });
+
+  return messagePayload;
+};
+
+export const sendDirectChatMessage = async ({ actor, userId, text, replyTo, metadata }) => {
   const conversation = await createDirectConversation({ actor, userId });
   const sentMessage = await sendChatMessage({
     actor,
     chatId: conversation.id,
     text,
+    replyTo,
     metadata,
   });
   const messages = await getChatMessages({
@@ -1622,6 +1755,108 @@ export const sendDirectChatMessage = async ({ actor, userId, text, metadata }) =
     messages,
     indexedInHistory: true,
   };
+};
+
+export const startChatCall = async ({ actor, chatId, type }) => {
+  const identity = await ensureLocalIdentity(actor);
+  const conversation = await getConversationForMember({
+    chatId,
+    identityId: identity.id,
+    appName: actor.appName,
+  });
+  const callType = normalizeCallType(type);
+  const callId = crypto.randomUUID();
+  const startedAt = new Date().toISOString();
+  const participants = await ChatConversationParticipant.findAll({
+    where: { conversationId: conversation.id },
+    include: [{ model: ChatIdentity, as: "identity" }],
+  });
+  const participantUserIds = participants
+    .map((participant) => participant.identity?.appUserId)
+    .filter(Boolean);
+  const call = {
+    id: callId,
+    chatId: String(conversation.id),
+    type: callType,
+    status: "started",
+    startedAt,
+    startedBy: {
+      id: String(identity.appUserId || ""),
+      name: identity.displayName || actor.displayName || actor.email || "Chat user",
+      email: identity.email || actor.email || "",
+    },
+    callUrl: buildCallRoomUrl({
+      appName: actor.appName,
+      conversationId: conversation.id,
+      callId,
+    }),
+  };
+
+  await writeChatAuditLog({
+    appName: actor.appName,
+    appUserId: actor.appUserId,
+    provider,
+    action: "start_call",
+    targetChatId: conversation.id,
+    metadata: call,
+  });
+
+  await notifyConversationCall({
+    appName: actor.appName,
+    conversationId: conversation.id,
+    call,
+    participantUserIds,
+    event: "call:started",
+  });
+
+  return call;
+};
+
+export const endChatCall = async ({ actor, chatId, callId }) => {
+  const identity = await ensureLocalIdentity(actor);
+  const conversation = await getConversationForMember({
+    chatId,
+    identityId: identity.id,
+    appName: actor.appName,
+  });
+  const endedAt = new Date().toISOString();
+  const participants = await ChatConversationParticipant.findAll({
+    where: { conversationId: conversation.id },
+    include: [{ model: ChatIdentity, as: "identity" }],
+  });
+  const participantUserIds = participants
+    .map((participant) => participant.identity?.appUserId)
+    .filter(Boolean);
+  const call = {
+    id: String(callId || ""),
+    chatId: String(conversation.id),
+    status: "ended",
+    endedAt,
+    endedBy: {
+      id: String(identity.appUserId || ""),
+      name: identity.displayName || actor.displayName || actor.email || "Chat user",
+      email: identity.email || actor.email || "",
+    },
+  };
+
+  await writeChatAuditLog({
+    appName: actor.appName,
+    appUserId: actor.appUserId,
+    provider,
+    action: "end_call",
+    targetChatId: conversation.id,
+    metadata: call,
+  });
+
+  await notifyConversationCall({
+    appName: actor.appName,
+    conversationId: conversation.id,
+    call,
+    participantUserIds,
+    event: "call:ended",
+  });
+
+  return call;
 };
 
 export const sendMultiUserMessage = async ({ actor, userIds, text }) => {
@@ -1702,7 +1937,11 @@ export const sendChatFile = async ({
 
 export const addChatReaction = async ({ actor, chatId, messageId, emoji }) => {
   const identity = await ensureLocalIdentity(actor);
-  await getConversationForMember({ chatId, identityId: identity.id, appName: actor.appName });
+  const conversation = await getConversationForMember({
+    chatId,
+    identityId: identity.id,
+    appName: actor.appName,
+  });
   assertString(messageId, "messageId");
   assertString(emoji, "emoji");
 
@@ -1720,7 +1959,7 @@ export const addChatReaction = async ({ actor, chatId, messageId, emoji }) => {
     });
   }
 
-  const [reaction] = await ChatMessageReaction.findOrCreate({
+  const [reaction, created] = await ChatMessageReaction.findOrCreate({
     where: {
       messageId: message.id,
       chatIdentityId: identity.id,
@@ -1728,12 +1967,45 @@ export const addChatReaction = async ({ actor, chatId, messageId, emoji }) => {
     },
   });
 
+  const fullMessage = await getMessageWithReactions(message.id);
+  const messagePayload = toMessage(fullMessage);
+  const participantUserIds = await getConversationParticipantUserIds(conversation.id);
+
+  await notifyConversationMessageUpdate({
+    appName: actor.appName,
+    conversationId: conversation.id,
+    message: messagePayload,
+    participantUserIds,
+  });
+
+  const messageSenderUserId = String(fullMessage?.sender?.appUserId || "");
+  if (
+    created &&
+    messageSenderUserId &&
+    messageSenderUserId !== String(identity.appUserId)
+  ) {
+    notifyMessageReaction({
+      appName: actor.appName,
+      conversationId: conversation.id,
+      targetUserId: messageSenderUserId,
+      reaction: {
+        ...toReaction({ ...reaction.get({ plain: true }), identity }),
+        actor: toUser(identity),
+      },
+      message: messagePayload,
+    });
+  }
+
   return toReaction({ ...reaction.get({ plain: true }), identity });
 };
 
 export const removeChatReaction = async ({ actor, chatId, messageId, emoji }) => {
   const identity = await ensureLocalIdentity(actor);
-  await getConversationForMember({ chatId, identityId: identity.id, appName: actor.appName });
+  const conversation = await getConversationForMember({
+    chatId,
+    identityId: identity.id,
+    appName: actor.appName,
+  });
   assertString(messageId, "messageId");
   assertString(emoji, "emoji");
 
@@ -1744,6 +2016,19 @@ export const removeChatReaction = async ({ actor, chatId, messageId, emoji }) =>
       emoji,
     },
   });
+
+  const fullMessage = await getMessageWithReactions(messageId);
+  if (fullMessage) {
+    const messagePayload = toMessage(fullMessage);
+    const participantUserIds = await getConversationParticipantUserIds(conversation.id);
+
+    await notifyConversationMessageUpdate({
+      appName: actor.appName,
+      conversationId: conversation.id,
+      message: messagePayload,
+      participantUserIds,
+    });
+  }
 
   return {
     removed: true,

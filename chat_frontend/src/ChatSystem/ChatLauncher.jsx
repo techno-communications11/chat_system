@@ -24,9 +24,14 @@ import { CHAT_APP_BASE_PATH } from "./chatRoutes";
 import PinglyMark from "./PinglyMark";
 import { useChatRealtime } from "./useChatRealtime";
 import {
+  requestChatNotificationPermission,
+  showChatNotification,
+} from "./chatNotifications";
+import {
   openDirectChatService,
   getChatUsersService,
   getChatConversationsService,
+  startConversationCallService,
 } from "../Services/chat.services";
 import {
   getArrayPayload,
@@ -37,7 +42,7 @@ import {
   getChannelId,
   getChannelName,
   getImageUrl,
-  getPhoneNumber,
+  getMessageText,
   getUnreadCount,
 } from "./chatHelpers";
 
@@ -101,13 +106,6 @@ const openChatInNewTab = (chatId) => {
 };
 
 const openCall = async (buddy, type = "audio") => {
-  const phone = getPhoneNumber(buddy);
-
-  if (phone && type === "audio") {
-    window.open(`tel:${phone}`, "_self");
-    return;
-  }
-
   const sendId = getBuddySendId(buddy);
 
   if (!sendId) {
@@ -116,7 +114,21 @@ const openCall = async (buddy, type = "audio") => {
   }
 
   try {
-    await openDirectChatService(sendId);
+    const openResponse = await openDirectChatService(sendId);
+    const chatId =
+      openResponse.data?.data?.chat_id ||
+      openResponse.data?.data?.data?.chat_id ||
+      null;
+
+    if (chatId) {
+      const callResponse = await startConversationCallService(chatId, type);
+      const call = callResponse.data?.data;
+      if (call?.callUrl) {
+        window.open(call.callUrl, "_blank", "noopener,noreferrer");
+        return;
+      }
+    }
+
     openChatInNewTab(sendId);
   } catch {
     openChatInNewTab(sendId);
@@ -155,6 +167,7 @@ export default function ChatLauncher() {
 
   useEffect(() => {
     fetchChatData();
+    requestChatNotificationPermission().catch(() => {});
   }, [fetchChatData]);
 
   const totalUnreadCount = useMemo(
@@ -166,6 +179,22 @@ export default function ChatLauncher() {
     enabled: true,
     onMessage: () => {
       fetchChatData();
+    },
+    onReactionAdded: ({ chatId, reaction, message }) => {
+      const actorName =
+        reaction?.actor?.name ||
+        reaction?.actor?.display_name ||
+        reaction?.actor?.email ||
+        "Someone";
+      const messagePreview = getMessageText(message);
+
+      showChatNotification({
+        title: `${actorName} reacted ${reaction?.emoji || ""}`.trim(),
+        body: messagePreview ? `To your message: ${messagePreview}` : "To your message",
+        icon: getImageUrl(reaction?.actor),
+        tag: `reaction-${chatId}-${message?.id || message?.message_id || ""}`,
+        onClick: () => openChatInNewTab(),
+      });
     },
     onAvatar: () => {
       fetchChatData();
