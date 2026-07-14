@@ -74,7 +74,7 @@ function TicketingTokenBridge({ children }) {
       const tokenUser = getTokenUser();
 
       if (tokenUser) {
-        localStorage.setItem("user", JSON.stringify(tokenUser));
+        sessionStorage.setItem("user", JSON.stringify(tokenUser));
       }
 
       shouldCleanUrl = true;
@@ -97,7 +97,43 @@ function TicketingTokenBridge({ children }) {
       );
     }
 
-    setReady(true);
+    const embedded = window.parent !== window;
+    const configuredOrigins = String(import.meta.env.VITE_CHAT_ALLOWED_PARENT_ORIGINS || "")
+      .split(",")
+      .map((origin) => origin.trim())
+      .filter(Boolean);
+    let referrerOrigin = "";
+    try { referrerOrigin = document.referrer ? new URL(document.referrer).origin : ""; } catch { /* ignored */ }
+    const allowedOrigins = new Set(configuredOrigins.length ? configuredOrigins : [referrerOrigin].filter(Boolean));
+
+    const onHostMessage = (event) => {
+      if (!allowedOrigins.has(event.origin) || event.source !== window.parent) return;
+      const message = event.data || {};
+      if (message.type === "chat:authenticate") {
+        storeAuthToken(message.token);
+        if (message.appName) storeChatAppName(message.appName);
+        const tokenUser = getTokenUser();
+        if (tokenUser) sessionStorage.setItem("user", JSON.stringify(tokenUser));
+        setReady(Boolean(tokenUser));
+        window.parent.postMessage({ type: "chat:authenticated", ok: Boolean(tokenUser) }, event.origin);
+      } else if (message.type === "chat:logout") {
+        sessionStorage.clear();
+        setReady(false);
+      } else if (message.type === "chat:set-theme") {
+        document.documentElement.dataset.chatTheme = String(message.theme || "light");
+      } else if (message.type === "chat:set-language") {
+        document.documentElement.lang = String(message.language || "en");
+      }
+    };
+
+    window.addEventListener("message", onHostMessage);
+    if (embedded && !tokenInfo && !getTokenUser()) {
+      for (const origin of allowedOrigins) window.parent.postMessage({ type: "chat:ready" }, origin);
+    } else {
+      setReady(true);
+    }
+
+    return () => window.removeEventListener("message", onHostMessage);
   }, []);
 
   if (!ready) return null;

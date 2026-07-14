@@ -9,6 +9,7 @@ import ChatMessage from "./chatMessage.module.js";
 import ChatMessageReaction from "./chatMessageReaction.module.js";
 import ChatGroup from "./chatGroup.module.js";
 import ChatChannel from "./chatChannel.module.js";
+import ChatCall from "./chatCall.module.js";
 import sequelize from "../config/db.js";
 import { DataTypes } from "sequelize";
 
@@ -98,6 +99,15 @@ ChatChannel.belongsTo(ChatConversation, {
   foreignKey: "conversationId",
   as: "conversation",
 });
+ChatConversation.hasMany(ChatCall, {
+  foreignKey: "conversationId",
+  as: "calls",
+  onDelete: "CASCADE",
+});
+ChatCall.belongsTo(ChatConversation, {
+  foreignKey: "conversationId",
+  as: "conversation",
+});
 
 const db = {
   sequelize,
@@ -112,6 +122,7 @@ const db = {
   chatMessageReactions: ChatMessageReaction,
   chatGroups: ChatGroup,
   chatChannels: ChatChannel,
+  chatCalls: ChatCall,
 };
 
 const seedRoles = async () => {
@@ -207,6 +218,29 @@ const ensureSchemaCompatibility = async () => {
   await addColumnIfMissing(queryInterface, "chat_audit_logs", "metadata", {
     type: DataTypes.JSON,
     allowNull: true,
+  });
+  await changeColumnIfPresent(queryInterface, "chat_calls", "providerSpaceName", {
+    type: DataTypes.STRING,
+    allowNull: true,
+  });
+  await changeColumnIfPresent(queryInterface, "chat_calls", "meetingUri", {
+    type: DataTypes.TEXT,
+    allowNull: true,
+  });
+  // Expand first so legacy `started` rows can be mapped without MySQL enum
+  // truncation, then remove the legacy value in the final definition.
+  await changeColumnIfPresent(queryInterface, "chat_calls", "status", {
+    type: DataTypes.ENUM("started", "ringing", "connecting", "accepted", "declined", "cancelled", "ended", "failed", "missed"),
+    allowNull: false,
+    defaultValue: "ringing",
+  });
+  await sequelize.query(
+    "UPDATE `chat_calls` SET `status` = 'accepted' WHERE `status` = 'started'",
+  );
+  await changeColumnIfPresent(queryInterface, "chat_calls", "status", {
+    type: DataTypes.ENUM("ringing", "connecting", "accepted", "declined", "cancelled", "ended", "failed", "missed"),
+    allowNull: false,
+    defaultValue: "ringing",
   });
 };
 

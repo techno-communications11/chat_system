@@ -9,32 +9,50 @@ export function useChatRealtime({
   activeConversationId,
   onMessage,
   onMessageUpdated,
+  onMessageRead,
   onReactionAdded,
   onPresence,
   onAvatar,
   onCallStarted,
+  onCallRinging,
+  onCallAccepted,
+  onCallDeclined,
+  onCallCancelled,
   onCallEnded,
+  onCallMissed,
 }) {
   const socketRef = useRef(null);
   const activeConversationIdRef = useRef(activeConversationId);
   const handlersRef = useRef({
     onMessage,
     onMessageUpdated,
+    onMessageRead,
     onReactionAdded,
     onPresence,
     onAvatar,
     onCallStarted,
+    onCallRinging,
+    onCallAccepted,
+    onCallDeclined,
+    onCallCancelled,
     onCallEnded,
+    onCallMissed,
   });
 
   handlersRef.current = {
     onMessage,
     onMessageUpdated,
+    onMessageRead,
     onReactionAdded,
     onPresence,
     onAvatar,
     onCallStarted,
+    onCallRinging,
+    onCallAccepted,
+    onCallDeclined,
+    onCallCancelled,
     onCallEnded,
+    onCallMissed,
   };
   activeConversationIdRef.current = activeConversationId;
 
@@ -66,6 +84,10 @@ export function useChatRealtime({
       handlersRef.current.onMessageUpdated?.(payload);
     });
 
+    socket.on("message:read", (payload) => {
+      handlersRef.current.onMessageRead?.(payload);
+    });
+
     socket.on("reaction:added", (payload) => {
       handlersRef.current.onReactionAdded?.(payload);
     });
@@ -81,6 +103,12 @@ export function useChatRealtime({
     socket.on("call:started", (payload) => {
       handlersRef.current.onCallStarted?.(payload);
     });
+
+    socket.on("call:ringing", (payload) => handlersRef.current.onCallRinging?.(payload));
+    socket.on("call:accepted", (payload) => handlersRef.current.onCallAccepted?.(payload));
+    socket.on("call:declined", (payload) => handlersRef.current.onCallDeclined?.(payload));
+    socket.on("call:cancelled", (payload) => handlersRef.current.onCallCancelled?.(payload));
+    socket.on("call:missed", (payload) => handlersRef.current.onCallMissed?.(payload));
 
     socket.on("call:ended", (payload) => {
       handlersRef.current.onCallEnded?.(payload);

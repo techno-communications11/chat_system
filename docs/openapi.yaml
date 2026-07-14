@@ -1,0 +1,218 @@
+openapi: 3.1.0
+info:
+  title: Embeddable Chat API
+  version: 1.0.0
+  description: Tenant-scoped API. The tenant is always obtained from the verified JWT.
+servers:
+  - url: /api/v1/chat
+security:
+  - bearerAuth: []
+tags:
+  - name: Identity
+  - name: Conversations
+  - name: Messages
+  - name: Channels
+  - name: Administration
+paths:
+  /me:
+    get: { tags: [Identity], summary: Get current chat identity, responses: { '200': { $ref: '#/components/responses/Success' } } }
+  /me/status:
+    patch:
+      tags: [Identity]
+      summary: Update presence
+      requestBody: { $ref: '#/components/requestBodies/JsonBody' }
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /me/avatar:
+    patch:
+      tags: [Identity]
+      summary: Update avatar URL or upload bytes
+      requestBody: { content: { application/json: { schema: { type: object } }, application/octet-stream: { schema: { type: string, contentEncoding: binary } } } }
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /users:
+    get:
+      tags: [Identity]
+      summary: Search visible users
+      parameters: [ { $ref: '#/components/parameters/Search' }, { $ref: '#/components/parameters/Limit' } ]
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /users/{userId}:
+    get:
+      tags: [Identity]
+      summary: Get a visible user
+      parameters: [ { $ref: '#/components/parameters/UserId' } ]
+      responses: { '200': { $ref: '#/components/responses/Success' }, '404': { $ref: '#/components/responses/Error' } }
+  /conversations:
+    get: { tags: [Conversations], summary: List member conversations, responses: { '200': { $ref: '#/components/responses/Success' } } }
+  /conversations/direct/{userId}:
+    post:
+      tags: [Conversations]
+      summary: Open or create a direct conversation
+      parameters: [ { $ref: '#/components/parameters/UserId' } ]
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /conversations/groups:
+    post:
+      tags: [Conversations]
+      summary: Create a group
+      requestBody: { $ref: '#/components/requestBodies/JsonBody' }
+      responses: { '201': { $ref: '#/components/responses/Success' } }
+  /conversations/{chatId}:
+    patch:
+      tags: [Conversations]
+      summary: Update a group conversation
+      parameters: [ { $ref: '#/components/parameters/ChatId' } ]
+      requestBody: { $ref: '#/components/requestBodies/JsonBody' }
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /conversations/{chatId}/members:
+    post:
+      tags: [Conversations]
+      summary: Add members
+      parameters: [ { $ref: '#/components/parameters/ChatId' } ]
+      requestBody: { $ref: '#/components/requestBodies/JsonBody' }
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /conversations/{chatId}/members/{userId}:
+    delete:
+      tags: [Conversations]
+      summary: Remove a member
+      parameters: [ { $ref: '#/components/parameters/ChatId' }, { $ref: '#/components/parameters/UserId' } ]
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /conversations/{chatId}/leave:
+    post:
+      tags: [Conversations]
+      summary: Leave a group or channel
+      parameters: [ { $ref: '#/components/parameters/ChatId' } ]
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /conversations/{chatId}/read:
+    post:
+      tags: [Messages]
+      summary: Mark a conversation read
+      parameters: [ { $ref: '#/components/parameters/ChatId' } ]
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /conversations/{chatId}/messages:
+    get:
+      tags: [Messages]
+      summary: Page message history
+      parameters: [ { $ref: '#/components/parameters/ChatId' }, { $ref: '#/components/parameters/Limit' }, { name: before, in: query, schema: { type: string } } ]
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+    post:
+      tags: [Messages]
+      summary: Send a message
+      parameters: [ { $ref: '#/components/parameters/ChatId' } ]
+      requestBody: { $ref: '#/components/requestBodies/JsonBody' }
+      responses: { '201': { $ref: '#/components/responses/Success' } }
+  /conversations/{chatId}/messages/{messageId}:
+    patch:
+      tags: [Messages]
+      summary: Edit a message
+      parameters: [ { $ref: '#/components/parameters/ChatId' }, { $ref: '#/components/parameters/MessageId' } ]
+      requestBody: { $ref: '#/components/requestBodies/JsonBody' }
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /conversations/{chatId}/messages/{messageId}/pin:
+    patch:
+      tags: [Messages]
+      summary: Pin or unpin a message
+      parameters: [ { $ref: '#/components/parameters/ChatId' }, { $ref: '#/components/parameters/MessageId' } ]
+      requestBody: { $ref: '#/components/requestBodies/JsonBody' }
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /conversations/{chatId}/messages/{messageId}/reactions:
+    post:
+      tags: [Messages]
+      summary: Add a reaction
+      parameters: [ { $ref: '#/components/parameters/ChatId' }, { $ref: '#/components/parameters/MessageId' } ]
+      requestBody: { $ref: '#/components/requestBodies/JsonBody' }
+      responses: { '201': { $ref: '#/components/responses/Success' } }
+  /conversations/{chatId}/messages/{messageId}/reactions/{emoji}:
+    delete:
+      tags: [Messages]
+      summary: Remove a reaction
+      parameters: [ { $ref: '#/components/parameters/ChatId' }, { $ref: '#/components/parameters/MessageId' }, { name: emoji, in: path, required: true, schema: { type: string } } ]
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /conversations/{chatId}/files:
+    post:
+      tags: [Messages]
+      summary: Upload/record a file message
+      parameters: [ { $ref: '#/components/parameters/ChatId' } ]
+      requestBody: { content: { application/octet-stream: { schema: { type: string, contentEncoding: binary } } } }
+      responses: { '201': { $ref: '#/components/responses/Success' }, '413': { $ref: '#/components/responses/Error' } }
+  /conversations/{chatId}/calls:
+    post:
+      tags: [Conversations]
+      summary: Start a call
+      parameters: [ { $ref: '#/components/parameters/ChatId' } ]
+      requestBody: { $ref: '#/components/requestBodies/JsonBody' }
+      responses: { '201': { $ref: '#/components/responses/Success' } }
+  /conversations/{chatId}/calls/{callId}/end:
+    post:
+      tags: [Conversations]
+      summary: End a call
+      parameters: [ { $ref: '#/components/parameters/ChatId' }, { name: callId, in: path, required: true, schema: { type: string } } ]
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /conversations/{chatId}/calls/{callId}/respond:
+    post:
+      tags: [Conversations]
+      summary: Accept or decline a ringing call
+      parameters: [ { $ref: '#/components/parameters/ChatId' }, { name: callId, in: path, required: true, schema: { type: string } } ]
+      requestBody: { $ref: '#/components/requestBodies/JsonBody' }
+      responses: { '200': { $ref: '#/components/responses/Success' }, '409': { $ref: '#/components/responses/Error' } }
+  /messages/direct/{userId}:
+    post:
+      tags: [Messages]
+      summary: Send a direct message
+      parameters: [ { $ref: '#/components/parameters/UserId' } ]
+      requestBody: { $ref: '#/components/requestBodies/JsonBody' }
+      responses: { '201': { $ref: '#/components/responses/Success' } }
+  /messages/multiple:
+    post: { tags: [Administration], summary: Admin multi-user direct send, requestBody: { $ref: '#/components/requestBodies/JsonBody' }, responses: { '200': { $ref: '#/components/responses/Success' } } }
+  /messages/broadcast:
+    post: { tags: [Administration], summary: Admin broadcast, requestBody: { $ref: '#/components/requestBodies/JsonBody' }, responses: { '200': { $ref: '#/components/responses/Success' } } }
+  /messages/search:
+    get:
+      tags: [Messages]
+      summary: Search visible messages
+      parameters: [ { $ref: '#/components/parameters/Search' }, { $ref: '#/components/parameters/Limit' } ]
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /groups:
+    get: { tags: [Conversations], summary: List groups, responses: { '200': { $ref: '#/components/responses/Success' } } }
+  /channels:
+    get: { tags: [Channels], summary: List visible channels, responses: { '200': { $ref: '#/components/responses/Success' } } }
+    post: { tags: [Channels], summary: Create a channel, requestBody: { $ref: '#/components/requestBodies/JsonBody' }, responses: { '201': { $ref: '#/components/responses/Success' } } }
+  /channels/{channelId}/join:
+    post:
+      tags: [Channels]
+      summary: Join a channel
+      parameters: [ { name: channelId, in: path, required: true, schema: { type: string } } ]
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /roles:
+    get: { tags: [Administration], summary: List roles, responses: { '200': { $ref: '#/components/responses/Success' } } }
+    post: { tags: [Administration], summary: Create a role, requestBody: { $ref: '#/components/requestBodies/JsonBody' }, responses: { '201': { $ref: '#/components/responses/Success' } } }
+  /admin/audit-logs:
+    get:
+      tags: [Administration]
+      summary: Search tenant audit logs
+      parameters: [ { $ref: '#/components/parameters/Limit' }, { name: action, in: query, schema: { type: string } }, { name: userId, in: query, schema: { type: string } }, { name: chatId, in: query, schema: { type: string } } ]
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
+  parameters:
+    ChatId: { name: chatId, in: path, required: true, schema: { type: string } }
+    UserId: { name: userId, in: path, required: true, schema: { type: string } }
+    MessageId: { name: messageId, in: path, required: true, schema: { type: string } }
+    Search: { name: search, in: query, schema: { type: string } }
+    Limit: { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100 } }
+  requestBodies:
+    JsonBody: { required: true, content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+  responses:
+    Success:
+      description: Successful response
+      content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } }
+    Error:
+      description: Error response
+      content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+  schemas:
+    Envelope:
+      type: object
+      required: [status, success, message]
+      properties: { status: { type: integer }, success: { const: true }, message: { type: string }, data: {} }
+    ErrorEnvelope:
+      type: object
+      required: [status, success, message]
+      properties: { status: { type: integer }, success: { const: false }, message: { type: string }, code: { type: string }, details: {} }

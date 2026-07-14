@@ -45,10 +45,33 @@ npm install
 npm run dev
 ```
 
+Before the first deployment or after model changes, apply the idempotent schema compatibility migration:
+
+```bash
+npm run db:sync
+```
+
 API health check:
 
 ```text
 http://localhost:4701/ping
+```
+
+## Google Meet with a personal Gmail account
+
+1. Enable the Google Meet REST API in Google Cloud.
+2. Configure the OAuth consent audience as **External** and add the Gmail address as a test user.
+3. Create an OAuth 2.0 **Desktop app**, download it, and save it as `client_secret.json` in this directory.
+4. Run `npm run google-meet:auth` locally. The first run opens a browser; sign in with the Gmail account that should own meetings and approve the Meet scope.
+5. Confirm that `token.json` was created, then start/restart the backend. Both credential files are ignored by Git.
+
+The backend reuses and refreshes `token.json`; chat users do not complete Google OAuth. To switch organizer accounts, revoke the old Google grant, delete `token.json`, and rerun the authorization command. An External OAuth app left in **Testing** gets a refresh token that expires after seven days, so move the OAuth app to an appropriate production publishing state for persistent deployment.
+
+Optional custom paths:
+
+```env
+GOOGLE_MEET_CREDENTIALS_PATH=./client_secret.json
+GOOGLE_MEET_TOKEN_PATH=./token.json
 ```
 
 The frontend should use:

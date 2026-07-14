@@ -21,12 +21,20 @@ import {
 } from "./applicationDirectory.services.js";
 import { normalizeAvatarUrl } from "./chatAvatar.services.js";
 import {
+  createRingingCall,
+  finishCall,
+  markCallMissed,
+  respondToRingingCall,
+} from "./chatCallLifecycle.services.js";
+import {
   broadcastAvatarUpdate,
   broadcastPresenceUpdate,
   notifyConversationCall,
   notifyConversationMessage,
   notifyConversationMessageUpdate,
+  notifyConversationRead,
   notifyMessageReaction,
+  isUserConnected,
 } from "../realtime/chatSocket.js";
 
 const provider = "local_chat";
@@ -80,17 +88,47 @@ const normalizeCallType = (value) => {
   return type === "video" ? "video" : "audio";
 };
 
-const buildCallRoomUrl = ({ appName, conversationId, callId }) => {
-  const roomName = [
-    normalizeAppName(appName),
-    "chat",
-    String(conversationId),
-    String(callId),
-  ]
-    .join("-")
-    .replace(/[^a-zA-Z0-9-]/g, "-");
+const getCallDurationSeconds = (call) => {
+  const startedAt = new Date(call?.startedAt).getTime();
+  const endedAt = new Date(call?.endedAt).getTime();
+  if (!Number.isFinite(startedAt) || !Number.isFinite(endedAt)) return undefined;
+  return Math.max(0, Math.round((endedAt - startedAt) / 1000));
+};
 
-  return `https://meet.jit.si/${roomName}`;
+const getCallHistoryText = (call, actorName) => {
+  if (call.status === "ringing") return "Started a Google Meet call";
+  if (call.status === "accepted") return `${actorName} accepted the Google Meet call`;
+  if (call.status === "declined") return `${actorName} declined the Google Meet call`;
+  if (call.status === "cancelled") return "Cancelled the Google Meet call";
+  if (call.status === "missed") return "Missed Google Meet call - recipient unavailable";
+  if (call.status === "ended") {
+    const seconds = getCallDurationSeconds(call);
+    const duration = seconds >= 60 ? `${Math.floor(seconds / 60)}m ${seconds % 60}s` : `${seconds || 0}s`;
+    return `Ended the Google Meet call - ${duration}`;
+  }
+  return `Google Meet call ${call.status}`;
+};
+
+const addCallHistoryMessage = async ({ actor, conversationId, call, actorName }) => {
+  try {
+    await sendChatMessage({
+      actor,
+      chatId: conversationId,
+      text: getCallHistoryText(call, actorName || "A participant"),
+      metadata: {
+        kind: "call_history",
+        callHistory: {
+          callId: call.id,
+          status: call.status,
+          startedAt: call.startedAt,
+          endedAt: call.endedAt,
+          durationSeconds: getCallDurationSeconds(call),
+        },
+      },
+    });
+  } catch (error) {
+    console.error("Unable to store call history message", error.message);
+  }
 };
 
 const getSignatureKey = (secretKey, dateStamp, region, service) => {
@@ -330,14 +368,14 @@ const normalizeLimit = (value, fallback = 50, max = 100) => {
   return Math.min(Math.floor(numericValue), max);
 };
 
-const normalizeMessagePage = (messages, limit) => {
+const normalizeMessagePage = (messages, limit, serializeMessage = toMessage) => {
   const hasMore = messages.length > limit;
   const pageMessages = hasMore ? messages.slice(0, limit) : messages;
   const orderedMessages = [...pageMessages].reverse();
 
   return {
-    data: orderedMessages.map(toMessage),
-    messages: orderedMessages.map(toMessage),
+    data: orderedMessages.map(serializeMessage),
+    messages: orderedMessages.map(serializeMessage),
     pagination: {
       limit,
       hasMore,
@@ -508,15 +546,19 @@ const toGroup = (group) => ({
 });
 
 export const getChatActor = (req) => ({
-  appName: normalizeAppName(req.headers["x-chat-app-name"] || defaultAppName),
+  // appName is retained as the persistence scope for backwards compatibility.
+  // It now always comes from the signed tenant claim, never a client header.
+  appName: req.auth?.tenantId || normalizeAppName(defaultAppName),
+  tenantId: req.auth?.tenantId || normalizeAppName(defaultAppName),
+  sourceApp: req.auth?.sourceApp || normalizeAppName(defaultAppName),
   authToken: req.authToken || null,
   appUserId:
+    req.auth?.subject ||
     req.user?.id ||
     req.user?.userId ||
     req.user?.user_id ||
     req.user?.appUserId ||
     req.user?.sub ||
-    req.body?.appUserId ||
     null,
   appUserEmail:
     req.user?.email ||
@@ -524,17 +566,17 @@ export const getChatActor = (req) => ({
     req.user?.user_email ||
     req.user?.mail ||
     req.user?.preferred_username ||
-    req.body?.appUserEmail ||
     null,
   displayName:
     req.user?.name ||
     req.user?.displayName ||
     req.user?.display_name ||
     req.user?.username ||
-    req.body?.displayName ||
     null,
-  role: req.user?.role || req.body?.role || null,
-  presence: req.user?.presence || req.user?.status || req.body?.presence || null,
+  role: req.user?.role || null,
+  roles: Array.isArray(req.user?.roles) ? req.user.roles : (req.user?.role ? [req.user.role] : []),
+  permissions: Array.isArray(req.user?.permissions) ? req.user.permissions : [],
+  presence: req.user?.presence || req.user?.status || null,
 });
 
 const assertActor = (actor) => {
@@ -600,10 +642,10 @@ const ensureLocalIdentity = async (actor) => {
 export const updateChatPresence = async ({ actor, presence }) => {
   const identity = await ensureLocalIdentity(actor);
   const normalizedPresence = String(presence || "").trim().toLowerCase();
-  const allowedPresence = ["online", "away", "busy", "offline"];
+  const allowedPresence = ["online", "away", "busy", "dnd", "offline"];
 
   if (!allowedPresence.includes(normalizedPresence)) {
-    throw new ChatServiceError("presence must be online, away, busy, or offline", {
+    throw new ChatServiceError("presence must be online, away, busy, dnd, or offline", {
       status: 400,
       code: "CHAT_INVALID_PRESENCE",
     });
@@ -1128,7 +1170,7 @@ export const leaveChatConversation = async ({ actor, chatId }) => {
 
 export const markChatConversationRead = async ({ actor, chatId }) => {
   const identity = await ensureLocalIdentity(actor);
-  await getConversationForMember({ chatId, identityId: identity.id, appName: actor.appName });
+  const conversation = await getConversationForMember({ chatId, identityId: identity.id, appName: actor.appName });
   const readAt = new Date();
 
   await ChatConversationParticipant.update(
@@ -1140,6 +1182,28 @@ export const markChatConversationRead = async ({ actor, chatId }) => {
       },
     },
   );
+
+  const readParticipants = await ChatConversationParticipant.findAll({
+    where: { conversationId: conversation.id },
+    include: [{ model: ChatIdentity, as: "identity", attributes: ["appUserId"] }],
+    attributes: ["lastReadAt"],
+  });
+  const participantUserIds = readParticipants
+    .map((participant) => participant.identity?.appUserId)
+    .filter(Boolean);
+
+  await notifyConversationRead({
+    appName: actor.appName,
+    conversationId: conversation.id,
+    participantUserIds,
+    userId: identity.appUserId,
+    readAt: readAt.toISOString(),
+    isDirect: conversation.type === "direct",
+    readStates: readParticipants.map((participant) => ({
+      userId: String(participant.identity?.appUserId || ""),
+      readAt: participant.lastReadAt?.toISOString?.() || participant.lastReadAt || null,
+    })),
+  });
 
   return {
     chatId: String(chatId),
@@ -1527,6 +1591,27 @@ export const getChatMessages = async ({ actor, chatId, query = {} }) => {
     limit: limit + 1,
   });
 
+  const participants = await ChatConversationParticipant.findAll({
+    where: { conversationId: chatId },
+    attributes: ["chatIdentityId", "lastReadAt"],
+  });
+  const serializeMessage = (message) => {
+    const recipients = participants.filter(
+      (participant) => Number(participant.chatIdentityId) !== Number(message.senderIdentityId),
+    );
+    const seenByAll =
+      recipients.length > 0 &&
+      recipients.every(
+        (participant) =>
+          participant.lastReadAt &&
+          new Date(participant.lastReadAt).getTime() >= new Date(message.createdAt).getTime(),
+      );
+    return {
+      ...toMessage(message),
+      deliveryStatus: seenByAll ? "seen" : "sent",
+    };
+  };
+
   await ChatConversationParticipant.update(
     { lastReadAt: new Date() },
     {
@@ -1539,7 +1624,7 @@ export const getChatMessages = async ({ actor, chatId, query = {} }) => {
 
   return {
     chatId: String(chatId),
-    ...normalizeMessagePage(messages, limit),
+    ...normalizeMessagePage(messages, limit, serializeMessage),
   };
 };
 
@@ -1766,37 +1851,59 @@ export const startChatCall = async ({ actor, chatId, type }) => {
   });
   const callType = normalizeCallType(type);
   const callId = crypto.randomUUID();
-  const startedAt = new Date().toISOString();
   const participants = await ChatConversationParticipant.findAll({
     where: { conversationId: conversation.id },
     include: [{ model: ChatIdentity, as: "identity" }],
   });
-  const participantUserIds = participants
-    .map((participant) => participant.identity?.appUserId)
-    .filter(Boolean);
-  const call = {
-    id: callId,
-    chatId: String(conversation.id),
+  const callerUserId = String(identity.appUserId);
+  const recipients = participants.filter(
+    (participant) =>
+      participant.identity?.appUserId &&
+      String(participant.identity.appUserId) !== callerUserId,
+  );
+  const deliveryStates = await Promise.all(
+    recipients.map(async (participant) => {
+      const userId = String(participant.identity.appUserId);
+      const presence = String(
+        participant.identity.metadata?.presence || participant.identity.metadata?.status || "online",
+      ).toLowerCase();
+      const connected = await isUserConnected(actor.appName, userId);
+      const canRing = connected && !["busy", "dnd", "offline"].includes(presence);
+      return { userId, presence, connected, canRing };
+    }),
+  );
+  const ringingUserIds = deliveryStates.filter((item) => item.canRing).map((item) => item.userId);
+  const unavailableUserIds = deliveryStates.filter((item) => !item.canRing).map((item) => item.userId);
+  let call = await createRingingCall({
+    appName: actor.appName,
+    conversationId: conversation.id,
+    callId,
     type: callType,
-    status: "started",
-    startedAt,
-    startedBy: {
+    actor: {
       id: String(identity.appUserId || ""),
-      name: identity.displayName || actor.displayName || actor.email || "Chat user",
-      email: identity.email || actor.email || "",
+      name: identity.providerDisplayName || actor.displayName || actor.appUserEmail || "Chat user",
+      email: identity.providerEmail || actor.appUserEmail || "",
     },
-    callUrl: buildCallRoomUrl({
+  });
+
+  if (ringingUserIds.length === 0) {
+    call = await markCallMissed({
       appName: actor.appName,
       conversationId: conversation.id,
       callId,
-    }),
+      unavailableUserIds,
+    });
+  }
+  call.delivery = {
+    ringing: ringingUserIds.length,
+    unavailable: unavailableUserIds.length,
   };
 
   await writeChatAuditLog({
     appName: actor.appName,
     appUserId: actor.appUserId,
     provider,
-    action: "start_call",
+    action: call.status === "missed" ? "missed_call" : "ring_call",
     targetChatId: conversation.id,
     metadata: call,
   });
@@ -1805,10 +1912,61 @@ export const startChatCall = async ({ actor, chatId, type }) => {
     appName: actor.appName,
     conversationId: conversation.id,
     call,
-    participantUserIds,
-    event: "call:started",
+    participantUserIds:
+      call.status === "missed" ? [callerUserId] : [...new Set([callerUserId, ...ringingUserIds])],
+    event: call.status === "missed" ? "call:missed" : "call:ringing",
   });
 
+  await addCallHistoryMessage({
+    actor,
+    conversationId: conversation.id,
+    call,
+    actorName: call.startedBy?.name,
+  });
+
+  return call;
+};
+
+export const respondChatCall = async ({ actor, chatId, callId, action }) => {
+  const identity = await ensureLocalIdentity(actor);
+  const conversation = await getConversationForMember({ chatId, identityId: identity.id, appName: actor.appName });
+  const participants = await ChatConversationParticipant.findAll({
+    where: { conversationId: conversation.id },
+    include: [{ model: ChatIdentity, as: "identity" }],
+  });
+  const participantUserIds = participants.map((item) => item.identity?.appUserId).filter(Boolean);
+  const call = await respondToRingingCall({
+    appName: actor.appName,
+    conversationId: conversation.id,
+    callId,
+    action: String(action || "").toLowerCase(),
+    actor: {
+      id: String(identity.appUserId),
+      name: identity.providerDisplayName || actor.displayName || actor.appUserEmail || "Chat user",
+      email: identity.providerEmail || actor.appUserEmail || "",
+    },
+  });
+  await writeChatAuditLog({
+    appName: actor.appName,
+    appUserId: actor.appUserId,
+    provider,
+    action: `call_${call.status}`,
+    targetChatId: conversation.id,
+    metadata: call,
+  });
+  await notifyConversationCall({
+    appName: actor.appName,
+    conversationId: conversation.id,
+    call,
+    participantUserIds,
+    event: `call:${call.status}`,
+  });
+  await addCallHistoryMessage({
+    actor,
+    conversationId: conversation.id,
+    call,
+    actorName: identity.providerDisplayName || actor.displayName || actor.appUserEmail,
+  });
   return call;
 };
 
@@ -1819,7 +1977,6 @@ export const endChatCall = async ({ actor, chatId, callId }) => {
     identityId: identity.id,
     appName: actor.appName,
   });
-  const endedAt = new Date().toISOString();
   const participants = await ChatConversationParticipant.findAll({
     where: { conversationId: conversation.id },
     include: [{ model: ChatIdentity, as: "identity" }],
@@ -1827,23 +1984,23 @@ export const endChatCall = async ({ actor, chatId, callId }) => {
   const participantUserIds = participants
     .map((participant) => participant.identity?.appUserId)
     .filter(Boolean);
-  const call = {
-    id: String(callId || ""),
-    chatId: String(conversation.id),
-    status: "ended",
-    endedAt,
-    endedBy: {
+  const call = await finishCall({
+    appName: actor.appName,
+    conversationId: conversation.id,
+    callId,
+    actorId: identity.appUserId,
+  });
+  call.endedBy = {
       id: String(identity.appUserId || ""),
-      name: identity.displayName || actor.displayName || actor.email || "Chat user",
-      email: identity.email || actor.email || "",
-    },
+      name: identity.providerDisplayName || actor.displayName || actor.appUserEmail || "Chat user",
+      email: identity.providerEmail || actor.appUserEmail || "",
   };
 
   await writeChatAuditLog({
     appName: actor.appName,
     appUserId: actor.appUserId,
     provider,
-    action: "end_call",
+    action: call.status === "cancelled" ? "cancel_call" : "end_call",
     targetChatId: conversation.id,
     metadata: call,
   });
@@ -1853,7 +2010,14 @@ export const endChatCall = async ({ actor, chatId, callId }) => {
     conversationId: conversation.id,
     call,
     participantUserIds,
-    event: "call:ended",
+    event: `call:${call.status}`,
+  });
+
+  await addCallHistoryMessage({
+    actor,
+    conversationId: conversation.id,
+    call,
+    actorName: call.endedBy.name,
   });
 
   return call;

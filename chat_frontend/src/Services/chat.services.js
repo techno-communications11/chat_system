@@ -148,6 +148,15 @@ export const endConversationCallService = (chatId, callId) =>
     getChatHeaders(),
   );
 
+export const respondConversationCallService = (chatId, callId, action) =>
+  api.post(
+    `/chat-service/conversations/${encodeURIComponent(chatId)}/calls/${encodeURIComponent(
+      callId,
+    )}/respond`,
+    { action },
+    getChatHeaders(),
+  );
+
 export const addMessageReactionService = (chatId, messageId, emoji) =>
   api.post(
     `/chat-service/conversations/${encodeURIComponent(chatId)}/messages/${encodeURIComponent(

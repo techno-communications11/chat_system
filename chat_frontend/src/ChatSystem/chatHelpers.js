@@ -400,6 +400,13 @@ export const normalizeChatMessages = (payload, selectedChat) => {
       const senderId = getMessageSenderId(message);
       const text = getMessageText(message);
       const attachments = getMessageAttachments(message);
+      const direction =
+        senderId && currentUserId
+          ? senderId === currentUserId
+            ? "outbound"
+            : "inbound"
+          : message?.direction ||
+            (senderId && selectedId && senderId === selectedId ? "inbound" : "outbound");
 
       return {
         id:
@@ -417,15 +424,11 @@ export const normalizeChatMessages = (payload, selectedChat) => {
           message?.sender?.email ||
           "Chat user",
         authorAvatarUrl: getImageUrl(message?.sender),
-        direction:
-          senderId && currentUserId
-            ? senderId === currentUserId
-              ? "outbound"
-              : "inbound"
-            : message?.direction ||
-              (senderId && selectedId && senderId === selectedId
-                ? "inbound"
-                : "outbound"),
+        direction,
+        deliveryStatus:
+          message?.deliveryStatus ||
+          message?.delivery_status ||
+          (direction === "outbound" ? "sent" : undefined),
         reactions: normalizeMessageReactions(message?.reactions || [], currentUserId),
         metadata: message?.metadata || {},
         mentions: message?.metadata?.mentions || message?.mentions || [],

@@ -31,17 +31,19 @@ import {
   registerUser,
   searchMessages,
   startConversationCall,
+  respondConversationCall,
   updateChatStatus,
   updateChatAvatarController,
   updateConversation,
   uploadConversationFile,
 } from "../controllers/chatService.controllers.js";
 import checkAuth from "../middlewares/check_auth.middleware.js";
+import { requireLegacyAuthEnabled } from "../middlewares/platformSecurity.middleware.js";
 
 const chatServiceRouter = express.Router();
 
-chatServiceRouter.post("/auth/register", registerUser);
-chatServiceRouter.post("/auth/login", loginUser);
+chatServiceRouter.post("/auth/register", requireLegacyAuthEnabled, registerUser);
+chatServiceRouter.post("/auth/login", requireLegacyAuthEnabled, loginUser);
 
 chatServiceRouter.get("/me", checkAuth, getChatMe);
 chatServiceRouter.patch("/me/status", checkAuth, updateChatStatus);
@@ -118,6 +120,11 @@ chatServiceRouter.post(
   "/conversations/:chatId/calls/:callId/end",
   checkAuth,
   endConversationCall
+);
+chatServiceRouter.post(
+  "/conversations/:chatId/calls/:callId/respond",
+  checkAuth,
+  respondConversationCall
 );
 chatServiceRouter.post(
   "/conversations/:chatId/messages/:messageId/reactions",

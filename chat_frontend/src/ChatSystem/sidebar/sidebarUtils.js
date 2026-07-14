@@ -10,6 +10,7 @@ export const statusOptions = [
   { value: "online", label: "Online", color: "#22c55e" },
   { value: "away", label: "Away", color: "#f59e0b" },
   { value: "busy", label: "Busy", color: "#ef4444" },
+  { value: "dnd", label: "Do Not Disturb", color: "#dc2626" },
   { value: "offline", label: "Offline", color: "#9aa3af" },
 ];
 

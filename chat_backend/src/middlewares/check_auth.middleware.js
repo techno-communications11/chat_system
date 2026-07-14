@@ -1,35 +1,24 @@
-import serverConfig from '../config/server.config.js';
-import jwt from "jsonwebtoken";
+import { getBearerToken, verifyChatToken } from "../auth/chatAuth.js";
+
 const checkAuth = (req, res, next) => {
-    try {
-        const authHeader = req.header("Authorization");
-
-        if (!authHeader) {
-            return res.status(401).json({
-                success: false,
-                message: "Unauthorized - No Token Provided",
-            });
-        }
-        const parts = authHeader.split(" ");
-        if (parts.length !== 2 || parts[0] !== "Bearer") {
-            return res.status(401).json({
-                success: false,
-                message: "Unauthorized - Token Format Invalid",
-            });
-        }
-
-        const token = parts[1];
-        const decoded = jwt.verify(token, serverConfig.secretKey);
-        req.authToken = token;
-        req.user = decoded;
-        next();
+  try {
+    const token = getBearerToken(req.header("Authorization"));
+    if (!token) {
+      return res.status(401).json({ success: false, code: "CHAT_AUTH_REQUIRED", message: "A Bearer token is required" });
     }
-    catch (error) {
-        return res.status(401).json({
-            success: false,
-            message: "Unauthorized - Invalid Token",
-            data: error.message
-        });
-    }
-}
+
+    const auth = verifyChatToken(token, { requestedApp: req.header("x-chat-app-name") });
+    req.authToken = token;
+    req.auth = auth;
+    req.user = auth.payload;
+    return next();
+  } catch (error) {
+    return res.status(error.code === "CHAT_AUTH_APP_FORBIDDEN" ? 403 : 401).json({
+      success: false,
+      code: error.code || "CHAT_AUTH_INVALID",
+      message: "Authentication failed",
+    });
+  }
+};
+
 export default checkAuth;

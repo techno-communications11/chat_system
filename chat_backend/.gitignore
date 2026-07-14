@@ -20,6 +20,11 @@ dist-ssr/
 .env.test.local
 .env.production.local
 
+# Google OAuth Desktop credentials and persisted user grant
+client_secret.json
+client_secret*.json
+token.json
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

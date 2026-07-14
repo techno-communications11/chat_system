@@ -24,8 +24,9 @@ import {
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import AlternateEmailIcon from "@mui/icons-material/AlternateEmail";
 import AttachFileIcon from "@mui/icons-material/AttachFile";
-import CallIcon from "@mui/icons-material/Call";
 import CloseIcon from "@mui/icons-material/Close";
+import DoneIcon from "@mui/icons-material/Done";
+import DoneAllIcon from "@mui/icons-material/DoneAll";
 import CodeIcon from "@mui/icons-material/Code";
 import EditIcon from "@mui/icons-material/Edit";
 import EmojiEmotionsIcon from "@mui/icons-material/EmojiEmotions";
@@ -61,11 +62,11 @@ import {
   ReadyToSendState,
 } from "./chatWindow/ChatWindowStates";
 import {
-  ActiveCallBanner,
   ForwardMessageDialog,
   PinnedMessageBanner,
   ToolBtn,
 } from "./chatWindow/ChatWindowPanels";
+import CallStatusBanner from "./calls/CallStatusBanner";
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 const BRAND = "#6F2DA8";
@@ -357,6 +358,15 @@ function MessageText({ message, mentionableUsers }) {
   const text = String(message.text || "");
   const mentionLabels = getMentionLabels(message, mentionableUsers);
 
+  if (message.metadata?.kind === "call_history") {
+    return (
+      <Box component="span" display="inline-flex" alignItems="center" gap={0.75} fontWeight={700}>
+        <VideoCallIcon sx={{ fontSize: 18, color: BRAND }} />
+        {text}
+      </Box>
+    );
+  }
+
   if (!text || mentionLabels.length === 0) {
     return <>{text}</>;
   }
@@ -614,20 +624,28 @@ function MessageRow({
               edited
             </Typography>
           )}
-          <Typography
-            component="div"
-            fontSize={10}
-            color="text.secondary"
-            sx={{
-              mt: 0.25,
-              minWidth: 44,
-              lineHeight: 1.2,
-              textAlign: "right",
-              whiteSpace: "nowrap",
-            }}
+          <Box
+            display="flex"
+            alignItems="center"
+            justifyContent="flex-end"
+            gap={0.35}
+            mt={0.3}
+            minWidth={44}
+            sx={{ lineHeight: 1.2, whiteSpace: "nowrap" }}
           >
-            {message.timestamp || ""}
-          </Typography>
+            <Typography component="span" fontSize={10} color="text.secondary">
+              {message.timestamp || ""}
+            </Typography>
+            {isMe && (
+              <Tooltip title={message.deliveryStatus === "seen" ? "Seen" : "Sent"} arrow>
+                {message.deliveryStatus === "seen" ? (
+                  <DoneAllIcon sx={{ fontSize: 15, color: "#2196f3" }} />
+                ) : (
+                  <DoneIcon sx={{ fontSize: 15, color: "#7b8794" }} />
+                )}
+              </Tooltip>
+            )}
+          </Box>
         </Box>
 
         {message.attachments?.length > 0 && (
@@ -1157,20 +1175,8 @@ export default function ChatWindow({
                   />
                 )}
                 <ToolBtn
-                  title="Audio call"
-                  icon={
-                    callStarting ? (
-                      <CircularProgress size={14} />
-                    ) : (
-                      <CallIcon sx={{ fontSize: 16 }} />
-                    )
-                  }
-                  disabled={callStarting}
-                  onClick={() => onStartConversationCall?.("audio")}
-                />
-                <ToolBtn
-                  title="Video call"
-                  icon={<VideoCallIcon sx={{ fontSize: 17 }} />}
+                  title="Google Meet"
+                  icon={callStarting ? <CircularProgress size={14} /> : <VideoCallIcon sx={{ fontSize: 17 }} />}
                   disabled={callStarting}
                   onClick={() => onStartConversationCall?.("video")}
                 />
@@ -1210,9 +1216,9 @@ export default function ChatWindow({
               selectedChat={selectedChat}
             />
 
-            <ActiveCallBanner
+            <CallStatusBanner
               activeCall={activeCall}
-              onEndActiveCall={onEndActiveCall}
+              onEnd={onEndActiveCall}
             />
             <PinnedMessageBanner
               latestPinnedMessage={latestPinnedMessage}

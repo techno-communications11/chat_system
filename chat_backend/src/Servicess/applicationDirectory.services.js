@@ -77,13 +77,15 @@ const getArrayPayload = (payload) => {
 };
 
 export const fetchApplicationUsers = async ({ actor, query = {} }) => {
-  const { usersUrl } = getProviderConfig(actor.appName);
+  const sourceApp = actor.sourceApp || actor.appName;
+  const { usersUrl } = getProviderConfig(sourceApp);
 
   if (!usersUrl) return null;
 
   const url = new URL(usersUrl);
   const params = {
-    app: actor.appName,
+    app: sourceApp,
+    tenantId: actor.tenantId || actor.appName,
     currentUserId: actor.appUserId,
     userId: actor.appUserId,
     email: actor.appUserEmail,
@@ -101,7 +103,8 @@ export const fetchApplicationUsers = async ({ actor, query = {} }) => {
   const response = await fetch(url, {
     headers: {
       Accept: "application/json",
-      "x-chat-app-name": actor.appName,
+      "x-chat-app-name": sourceApp,
+      "x-chat-tenant-id": actor.tenantId || actor.appName,
       ...(actor.authToken ? { Authorization: `Bearer ${actor.authToken}` } : {}),
     },
   });
@@ -119,7 +122,7 @@ export const fetchApplicationUsers = async ({ actor, query = {} }) => {
   const search = String(query.search || "").trim().toLowerCase();
 
   return getArrayPayload(payload)
-    .map((user) => normalizeDirectoryUser(user, actor.appName))
+    .map((user) => normalizeDirectoryUser(user, sourceApp))
     .filter(Boolean)
     .filter((user) => !query.excludeSelf || String(user.id) !== String(actor.appUserId))
     .filter((user) => {

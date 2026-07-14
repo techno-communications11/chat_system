@@ -11,6 +11,7 @@ import {
   List,
   ListItemButton,
   ListItemText,
+  Snackbar,
   TextField,
   Typography,
 } from "@mui/material";
@@ -39,6 +40,8 @@ import {
   showChatNotification,
 } from "./chatNotifications";
 import { useChatRealtime } from "./useChatRealtime";
+import IncomingCallDialog from "./calls/IncomingCallDialog";
+import { useCallTone } from "./calls/useCallTone";
 import {
   getChatMessagesService,
   getChatStatusService,
@@ -58,6 +61,7 @@ import {
   shareConversationFileService,
   startConversationCallService,
   endConversationCallService,
+  respondConversationCallService,
   updateChatAvatarService,
   updateChatStatusService,
 } from "../Services/chat.services";
@@ -71,6 +75,7 @@ export default function ChatSystem({ standalone = false }) {
   const loadedChatHistoryRef = useRef(new Set());
   const readConversationKeysRef = useRef(new Set());
   const handledRealtimeMessageKeysRef = useRef(new Set());
+  const openedMeetCallIdsRef = useRef(new Set());
 
   const [, setTab] = useState("conversations");
   const [buddies, setBuddies] = useState([]);
@@ -100,7 +105,12 @@ export default function ChatSystem({ standalone = false }) {
   const [statusSaving, setStatusSaving] = useState(false);
   const [avatarUploading, setAvatarUploading] = useState(false);
   const [activeCall, setActiveCall] = useState(null);
+  const [incomingCall, setIncomingCall] = useState(null);
   const [callStarting, setCallStarting] = useState(false);
+  const [callResponding, setCallResponding] = useState(false);
+  const [callError, setCallError] = useState("");
+  const [callNotice, setCallNotice] = useState("");
+  useCallTone(incomingCall ? "incoming" : activeCall?.status === "ringing" ? "outgoing" : null);
   const [mutedGroupIds, setMutedGroupIds] = useState(() => {
     try {
       return JSON.parse(localStorage.getItem("chat_muted_group_ids") || "[]");
@@ -545,6 +555,29 @@ export default function ChatSystem({ standalone = false }) {
     [buddies, channels, currentUserId, selectedChat],
   );
 
+  const handleRealtimeMessageRead = useCallback(
+    ({ chatId, userId, readAt, readStates = [] }) => {
+      if (!chatId || !readAt || String(userId) === currentUserId) return;
+      const localKey = resolveLocalChatKey({ chatId, channels, buddies, currentUserId });
+      if (!localKey) return;
+      const otherReaders = readStates.filter(
+        (reader) => reader.userId && String(reader.userId) !== currentUserId,
+      );
+      setMessagesByChat((prev) => ({
+        ...prev,
+        [localKey]: (prev[localKey] || []).map((message) => {
+          if (message.direction !== "outbound" || otherReaders.length === 0) return message;
+          const sentAt = new Date(message.sentAt).getTime();
+          const seenByAll = otherReaders.every(
+            (reader) => reader.readAt && new Date(reader.readAt).getTime() >= sentAt,
+          );
+          return seenByAll ? { ...message, deliveryStatus: "seen" } : message;
+        }),
+      }));
+    },
+    [buddies, channels, currentUserId],
+  );
+
   const handleRealtimeReactionAdded = useCallback(
     ({ chatId, reaction, message }) => {
       const actorId = String(
@@ -642,26 +675,65 @@ export default function ChatSystem({ standalone = false }) {
     }
   }, [currentUserId]);
 
-  const handleRealtimeCallStarted = useCallback(
-    ({ chatId, call }) => {
-      if (!chatId || !call) return;
+  const handleRealtimeCallRinging = useCallback(({ call }) => {
+    if (!call?.id) return;
+    if (String(call.startedBy?.id) === currentUserId) {
+      setActiveCall(call);
+      return;
+    }
+    setCallError("");
+    setIncomingCall(call);
+    showChatNotification({
+      title: `Incoming ${call.type === "video" ? "video" : "audio"} call`,
+      body: `${call.startedBy?.name || "A chat user"} is calling you`,
+      tag: `chat-call-${call.id}`,
+    });
+  }, [currentUserId]);
 
-      const isActiveChat =
-        (selectedChat?.type === "channel" &&
-          String(selectedChat.id) === String(chatId)) ||
-        (selectedChat?.type === "person" &&
-          String(selectedChat.chatId || "") === String(chatId));
+  const openGoogleMeet = useCallback((call) => {
+    if (!call?.id || !call?.callUrl || openedMeetCallIdsRef.current.has(call.id)) return;
+    openedMeetCallIdsRef.current.add(call.id);
+    window.location.assign(call.callUrl);
+  }, []);
 
-      if (isActiveChat) {
-        setActiveCall(call);
-      }
-    },
-    [selectedChat],
-  );
+  const handleRealtimeCallAccepted = useCallback(({ call }) => {
+    if (!call?.id) return;
+    setIncomingCall((prev) => (prev?.id === call.id ? null : prev));
+    setActiveCall(call);
+    showChatNotification({ title: "Call accepted", body: "Your Google Meet room is ready.", tag: `chat-call-${call.id}` });
+    openGoogleMeet(call);
+  }, [openGoogleMeet]);
+
+  const handleRealtimeCallClosed = useCallback(({ call }) => {
+    if (!call?.id) return;
+    setIncomingCall((prev) => (prev?.id === call.id ? null : prev));
+    setActiveCall((prev) => (prev?.id === call.id ? null : prev));
+  }, []);
+
+  const handleRealtimeCallDeclined = useCallback(({ call }) => {
+    handleRealtimeCallClosed({ call });
+    if (String(call?.startedBy?.id) === currentUserId) {
+      showChatNotification({ title: "Call declined", body: "The other user declined your call.", tag: `chat-call-${call?.id}` });
+    }
+  }, [currentUserId, handleRealtimeCallClosed]);
+
+  const handleRealtimeCallCancelled = useCallback(({ call }) => {
+    handleRealtimeCallClosed({ call });
+    if (String(call?.startedBy?.id) !== currentUserId) {
+      showChatNotification({ title: "Call cancelled", body: `${call?.startedBy?.name || "The caller"} cancelled the call.`, tag: `chat-call-${call?.id}` });
+    }
+  }, [currentUserId, handleRealtimeCallClosed]);
 
   const handleRealtimeCallEnded = useCallback(({ call }) => {
     if (!call?.id) return;
     setActiveCall((prev) => (prev?.id === call.id ? null : prev));
+  }, []);
+
+  const handleRealtimeCallMissed = useCallback(({ call }) => {
+    if (!call?.id) return;
+    setIncomingCall((prev) => (prev?.id === call.id ? null : prev));
+    setActiveCall((prev) => (prev?.id === call.id ? null : prev));
+    setCallNotice("The user is offline, busy, or in Do Not Disturb. A missed call was saved.");
   }, []);
 
   useChatRealtime({
@@ -669,11 +741,17 @@ export default function ChatSystem({ standalone = false }) {
     activeConversationId,
     onMessage: handleRealtimeMessage,
     onMessageUpdated: handleRealtimeMessageUpdated,
+    onMessageRead: handleRealtimeMessageRead,
     onReactionAdded: handleRealtimeReactionAdded,
     onPresence: handleRealtimePresence,
     onAvatar: handleRealtimeAvatar,
-    onCallStarted: handleRealtimeCallStarted,
+    onCallStarted: handleRealtimeCallAccepted,
+    onCallRinging: handleRealtimeCallRinging,
+    onCallAccepted: handleRealtimeCallAccepted,
+    onCallDeclined: handleRealtimeCallDeclined,
+    onCallCancelled: handleRealtimeCallCancelled,
     onCallEnded: handleRealtimeCallEnded,
+    onCallMissed: handleRealtimeCallMissed,
   });
 
   useEffect(() => {
@@ -1306,6 +1384,7 @@ export default function ChatSystem({ standalone = false }) {
 
     setCallStarting(true);
     setSendError("");
+    setCallError("");
 
     try {
       let chatId =
@@ -1332,15 +1411,49 @@ export default function ChatSystem({ standalone = false }) {
 
       const response = await startConversationCallService(chatId, type);
       const call = response.data?.data;
-      setActiveCall(call);
-
-      if (call?.callUrl) {
-        window.open(call.callUrl, "_blank", "noopener,noreferrer");
+      if (call?.status === "missed") {
+        setActiveCall(null);
+        setCallNotice("The user is offline, busy, or in Do Not Disturb. A missed call was saved.");
+      } else {
+        setActiveCall(call);
       }
     } catch (error) {
-      setSendError(normalizeChatError(error));
+      const message = error?.response?.data?.message || normalizeChatError(error);
+      const existingCall = error?.response?.data?.details?.call;
+      if (existingCall?.id) setActiveCall(existingCall);
+      setCallNotice(message);
     } finally {
       setCallStarting(false);
+    }
+  };
+
+  const handleRespondToCall = async (action) => {
+    if (!incomingCall?.id || !incomingCall?.chatId || callResponding) return;
+    setCallResponding(true);
+    setSendError("");
+    setCallError("");
+    try {
+      const response = await respondConversationCallService(
+        incomingCall.chatId,
+        incomingCall.id,
+        action,
+      );
+      const call = response.data?.data;
+      setIncomingCall(null);
+      if (action === "accept") {
+        setActiveCall(call);
+        openGoogleMeet(call);
+      }
+    } catch (error) {
+      const message = error?.response?.data?.message || normalizeChatError(error);
+      setCallError(message);
+      setCallNotice(message);
+      const code = error?.response?.data?.code;
+      if (code === "CHAT_CALL_ALREADY_ANSWERED" || code === "CHAT_CALL_NOT_FOUND") {
+        setIncomingCall(null);
+      }
+    } finally {
+      setCallResponding(false);
     }
   };
 
@@ -1353,7 +1466,7 @@ export default function ChatSystem({ standalone = false }) {
     try {
       await endConversationCallService(activeCall.chatId, activeCall.id);
     } catch (error) {
-      setSendError(normalizeChatError(error));
+      setCallNotice(normalizeChatError(error));
     } finally {
       setActiveCall(null);
     }
@@ -1628,7 +1741,7 @@ export default function ChatSystem({ standalone = false }) {
       <ChatWindow
         activeCall={activeCall}
         chatBoxRef={chatBoxRef}
-        callStarting={callStarting}
+        callStarting={callStarting || Boolean(activeCall) || Boolean(incomingCall)}
         availableChats={conversationItems}
         currentUser={currentUser}
         editingMessage={editingMessage}
@@ -1660,6 +1773,20 @@ export default function ChatSystem({ standalone = false }) {
         uploading={uploading}
       />
       </Box>
+      <IncomingCallDialog
+        call={incomingCall}
+        error={callError}
+        responding={callResponding}
+        onAccept={() => handleRespondToCall("accept")}
+        onDecline={() => handleRespondToCall("decline")}
+      />
+      <Snackbar
+        open={Boolean(callNotice)}
+        autoHideDuration={6000}
+        onClose={() => setCallNotice("")}
+        message={callNotice}
+        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+      />
       <Dialog
         open={groupDialogOpen}
         onClose={() => setGroupDialogOpen(false)}

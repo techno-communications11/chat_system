@@ -18,7 +18,6 @@ import {
 } from "@mui/material";
 import ChatBubbleOutlineIcon from "@mui/icons-material/ChatBubbleOutline";
 import GroupsIcon from "@mui/icons-material/Groups";
-import PhoneIcon from "@mui/icons-material/Phone";
 import VideocamIcon from "@mui/icons-material/Videocam";
 import { CHAT_APP_BASE_PATH } from "./chatRoutes";
 import PinglyMark from "./PinglyMark";
@@ -105,7 +104,7 @@ const openChatInNewTab = (chatId) => {
   window.open(path, "_blank", "noopener,noreferrer");
 };
 
-const openCall = async (buddy, type = "audio") => {
+const openCall = async (buddy) => {
   const sendId = getBuddySendId(buddy);
 
   if (!sendId) {
@@ -121,12 +120,7 @@ const openCall = async (buddy, type = "audio") => {
       null;
 
     if (chatId) {
-      const callResponse = await startConversationCallService(chatId, type);
-      const call = callResponse.data?.data;
-      if (call?.callUrl) {
-        window.open(call.callUrl, "_blank", "noopener,noreferrer");
-        return;
-      }
+      await startConversationCallService(chatId, "video");
     }
 
     openChatInNewTab(sendId);
@@ -338,23 +332,12 @@ export default function ChatLauncher() {
                     </Stack>
                   }
                 />
-                <Tooltip title="Audio call">
+                <Tooltip title="Google Meet">
                   <IconButton
                     size="small"
                     onClick={(event) => {
                       event.stopPropagation();
-                      openCall(buddy, "audio");
-                    }}
-                  >
-                    <PhoneIcon fontSize="small" />
-                  </IconButton>
-                </Tooltip>
-                <Tooltip title="Video call">
-                  <IconButton
-                    size="small"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      openCall(buddy, "video");
+                      openCall(buddy);
                     }}
                   >
                     <VideocamIcon fontSize="small" />

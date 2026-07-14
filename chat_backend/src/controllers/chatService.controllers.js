@@ -27,6 +27,7 @@ import {
   sendDirectChatMessage,
   sendMultiUserMessage,
   startChatCall,
+  respondChatCall,
   endChatCall,
   updateChatPresence,
   updateChatAvatar,
@@ -60,9 +61,11 @@ const sendError = (res, error) => {
 };
 
 const requireChatAdmin = (actor) => {
-  const role = String(actor.role || "").toLowerCase();
+  const roles = new Set([actor.role, ...(actor.roles || [])].map((role) => String(role || "").toLowerCase()));
+  const permissions = new Set((actor.permissions || []).map((permission) => String(permission).toLowerCase()));
 
-  if (!["admin", "superadmin", "super admin"].includes(role)) {
+  if (!["admin", "superadmin", "super admin"].some((role) => roles.has(role)) &&
+      !permissions.has("chat:manage") && !permissions.has("chat:*")) {
     const error = new Error("You do not have permission for this chat action");
     error.status = 403;
     error.code = "CHAT_FORBIDDEN";
@@ -486,7 +489,22 @@ export const startConversationCall = async (req, res) => {
       chatId: req.params.chatId,
       type: req.body?.type,
     });
-    return sendSuccess(res, "Call started", data, 201);
+    return sendSuccess(res, "Call is ringing", data, 201);
+  } catch (error) {
+    return sendError(res, error);
+  }
+};
+
+export const respondConversationCall = async (req, res) => {
+  try {
+    const actor = getChatActor(req);
+    const data = await respondChatCall({
+      actor,
+      chatId: req.params.chatId,
+      callId: req.params.callId,
+      action: req.body?.action,
+    });
+    return sendSuccess(res, `Call ${data.status}`, data);
   } catch (error) {
     return sendError(res, error);
   }

@@ -52,60 +52,6 @@ export function ToolBtn({ title, icon, disabled, onClick }) {
   );
 }
 
-export function ActiveCallBanner({ activeCall, onEndActiveCall }) {
-  if (!activeCall) return null;
-
-  return (
-    <Box
-      px={2.5}
-      py={1}
-      display="flex"
-      alignItems="center"
-      justifyContent="space-between"
-      gap={1}
-      sx={{
-        bgcolor: "#f0fdf4",
-        borderBottom: "0.5px solid",
-        borderColor: "#bbf7d0",
-      }}
-    >
-      <Box minWidth={0}>
-        <Typography fontSize={13} fontWeight={800} color="#166534" noWrap>
-          {activeCall.type === "video" ? "Video call" : "Audio call"} in progress
-        </Typography>
-        <Typography fontSize={12} color="#3f6950" noWrap>
-          Started by {activeCall.startedBy?.name || "someone"}
-        </Typography>
-      </Box>
-      <Stack direction="row" spacing={0.75} flexShrink={0}>
-        {activeCall.callUrl && (
-          <Button
-            size="small"
-            variant="contained"
-            onClick={() => window.open(activeCall.callUrl, "_blank", "noopener,noreferrer")}
-            sx={{
-              textTransform: "none",
-              fontWeight: 700,
-              bgcolor: "#16a34a",
-              "&:hover": { bgcolor: "#15803d" },
-            }}
-          >
-            Join
-          </Button>
-        )}
-        <Button
-          size="small"
-          color="inherit"
-          onClick={onEndActiveCall}
-          sx={{ textTransform: "none", fontWeight: 700 }}
-        >
-          End
-        </Button>
-      </Stack>
-    </Box>
-  );
-}
-
 export function PinnedMessageBanner({ latestPinnedMessage, pinnedCount }) {
   if (!latestPinnedMessage) return null;
 

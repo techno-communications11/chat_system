@@ -61,9 +61,16 @@ const issueToken = (user) => {
       displayName: publicUser.display_name,
       role: publicUser.role,
       roles: publicUser.roles,
+      tenant_id: process.env.CHAT_LOCAL_TENANT_ID || "local",
+      jti: crypto.randomUUID(),
     },
     serverConfig.secretKey,
-    { expiresIn: process.env.CHAT_JWT_EXPIRES_IN || "7d" },
+    {
+      expiresIn: process.env.CHAT_JWT_EXPIRES_IN || "15m",
+      issuer: process.env.CHAT_JWT_ISSUER || "chat-local",
+      audience: process.env.CHAT_JWT_AUDIENCE || "chat-api",
+      subject: publicUser.id,
+    },
   );
 };
 

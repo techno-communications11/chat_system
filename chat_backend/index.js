@@ -6,10 +6,13 @@ import router from "./src/routing/index.js";
 import sequelize, { ensureDatabase } from "./src/config/db.js";
 import { syncModels } from "./src/modules/index.js";
 import { initChatSocket } from "./src/realtime/chatSocket.js";
+import { apiRateLimit, platformSecurityHeaders } from "./src/middlewares/platformSecurity.middleware.js";
 
 dotenv.config();
 
 const app = express();
+app.disable("x-powered-by");
+app.set("trust proxy", Number(process.env.TRUST_PROXY_HOPS || 1));
 const PORT = process.env.PORT || 4600;
 const configuredClientUrls = (process.env.CLIENT_URL || "")
   .split(",")
@@ -23,6 +26,8 @@ const allowedOrigins = new Set([
 let server;
 let isShuttingDown = false;
 
+app.use(platformSecurityHeaders);
+app.use(apiRateLimit);
 app.use(
   cors({
     origin(origin, callback) {

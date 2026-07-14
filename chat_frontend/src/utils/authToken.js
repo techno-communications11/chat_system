@@ -10,15 +10,21 @@ export const normalizeAuthToken = (value) => {
 };
 
 export const getStoredAuthToken = () =>
-  normalizeAuthToken(Cookies.get(TOKEN_COOKIE_NAME) || localStorage.getItem(TOKEN_STORAGE_KEY));
+  normalizeAuthToken(
+    sessionStorage.getItem(TOKEN_STORAGE_KEY) ||
+    // One-time compatibility read for deployments upgrading from persistent storage.
+    Cookies.get(TOKEN_COOKIE_NAME) ||
+    localStorage.getItem(TOKEN_STORAGE_KEY),
+  );
 
 export const storeAuthToken = (value) => {
   const token = normalizeAuthToken(value);
 
   if (!token) return "";
 
-  Cookies.set(TOKEN_COOKIE_NAME, token, { path: "/", sameSite: "lax" });
-  localStorage.setItem(TOKEN_STORAGE_KEY, token);
+  sessionStorage.setItem(TOKEN_STORAGE_KEY, token);
+  Cookies.remove(TOKEN_COOKIE_NAME, { path: "/" });
+  localStorage.removeItem(TOKEN_STORAGE_KEY);
 
   return token;
 };
@@ -38,6 +44,7 @@ export const storeChatAppName = (value) => {
 
 export const clearAuthToken = () => {
   Cookies.remove(TOKEN_COOKIE_NAME, { path: "/" });
+  sessionStorage.removeItem(TOKEN_STORAGE_KEY);
   localStorage.removeItem(TOKEN_STORAGE_KEY);
 };
 
