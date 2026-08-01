@@ -113,6 +113,82 @@ export const initChatSocket = (httpServer, allowedOrigins) => {
         socket.leave(room(appName, `conversation:${String(chatId)}`));
       }
     });
+
+    socket.on("join:call", async (payload = {}, acknowledge) => {
+      try {
+        const chatId = String(payload.chatId || "");
+        const callId = String(payload.callId || "");
+        const allowed = chatId && callId && await canAccessConversation({
+          tenantId: appName,
+          userId,
+          conversationId: chatId,
+        });
+        if (!allowed) {
+          acknowledge?.({ ok: false, code: "CHAT_CONVERSATION_FORBIDDEN" });
+          return;
+        }
+
+        const callRoom = room(appName, `call:${chatId}:${callId}`);
+        const socketsBeforeJoin = await io.in(callRoom).fetchSockets();
+        await socket.join(callRoom);
+        socket.to(callRoom).emit("call:peer-joined", {
+          chatId,
+          callId,
+          userId: String(userId),
+          name: socket.data.displayName,
+        });
+        acknowledge?.({
+          ok: true,
+          peers: socketsBeforeJoin.map((peerSocket) => ({
+            userId: String(peerSocket.data.userId),
+            name: peerSocket.data.displayName,
+          })),
+        });
+      } catch {
+        acknowledge?.({ ok: false, code: "CHAT_CALL_JOIN_FAILED" });
+      }
+    });
+
+    socket.on("leave:call", (payload = {}) => {
+      const chatId = String(payload.chatId || "");
+      const callId = String(payload.callId || "");
+      if (!chatId || !callId) return;
+      const callRoom = room(appName, `call:${chatId}:${callId}`);
+      socket.to(callRoom).emit("call:peer-left", {
+        chatId,
+        callId,
+        userId: String(userId),
+      });
+      socket.leave(callRoom);
+    });
+
+    socket.on("call:signal", async (payload = {}, acknowledge) => {
+      try {
+        const chatId = String(payload.chatId || "");
+        const callId = String(payload.callId || "");
+        const signal = payload.signal;
+        const allowed = chatId && callId && signal && await canAccessConversation({
+          tenantId: appName,
+          userId,
+          conversationId: chatId,
+        });
+        if (!allowed) {
+          acknowledge?.({ ok: false, code: "CHAT_CONVERSATION_FORBIDDEN" });
+          return;
+        }
+
+        socket.to(room(appName, `call:${chatId}:${callId}`)).emit("call:signal", {
+          chatId,
+          callId,
+          signal,
+          fromUserId: String(userId),
+          fromName: socket.data.displayName,
+        });
+        acknowledge?.({ ok: true });
+      } catch {
+        acknowledge?.({ ok: false, code: "CHAT_CALL_SIGNAL_FAILED" });
+      }
+    });
   });
 
   return io;

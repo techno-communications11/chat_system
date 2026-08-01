@@ -1,9 +1,9 @@
 import mysql from "mysql2/promise";
 import Sequelize from "sequelize";
-import dotenv from "dotenv";
 import moment from "moment-timezone";
+import loadEnv from "./loadEnv.js";
 
-dotenv.config();
+loadEnv();
 
 const dbName = process.env.DB_NAME || "chat_system";
 const dbUser = process.env.DB_USER || "root";

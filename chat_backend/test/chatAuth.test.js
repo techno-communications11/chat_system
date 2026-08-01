@@ -46,6 +46,12 @@ test("validates issuer, audience, tenant, subject, jti, and host app", () => {
   assert.equal(auth.sourceApp, "ticket_portal");
 });
 
+test("uses the signed app claim when no host app header is provided", () => {
+  configure();
+  const auth = verifyChatToken(token({ app: "crm" }));
+  assert.equal(auth.sourceApp, "crm");
+});
+
 test("rejects a host application outside the signed/configured allowlist", () => {
   configure();
   assert.throws(() => verifyChatToken(token(), { requestedApp: "inventory" }), { code: "CHAT_AUTH_APP_FORBIDDEN" });

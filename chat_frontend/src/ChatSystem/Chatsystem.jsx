@@ -41,6 +41,7 @@ import {
 } from "./chatNotifications";
 import { useChatRealtime } from "./useChatRealtime";
 import IncomingCallDialog from "./calls/IncomingCallDialog";
+import InternalCallPanel from "./calls/InternalCallPanel";
 import { useCallTone } from "./calls/useCallTone";
 import {
   getChatMessagesService,
@@ -75,7 +76,6 @@ export default function ChatSystem({ standalone = false }) {
   const loadedChatHistoryRef = useRef(new Set());
   const readConversationKeysRef = useRef(new Set());
   const handledRealtimeMessageKeysRef = useRef(new Set());
-  const openedMeetCallIdsRef = useRef(new Set());
 
   const [, setTab] = useState("conversations");
   const [buddies, setBuddies] = useState([]);
@@ -690,19 +690,12 @@ export default function ChatSystem({ standalone = false }) {
     });
   }, [currentUserId]);
 
-  const openGoogleMeet = useCallback((call) => {
-    if (!call?.id || !call?.callUrl || openedMeetCallIdsRef.current.has(call.id)) return;
-    openedMeetCallIdsRef.current.add(call.id);
-    window.location.assign(call.callUrl);
-  }, []);
-
   const handleRealtimeCallAccepted = useCallback(({ call }) => {
     if (!call?.id) return;
     setIncomingCall((prev) => (prev?.id === call.id ? null : prev));
     setActiveCall(call);
-    showChatNotification({ title: "Call accepted", body: "Your Google Meet room is ready.", tag: `chat-call-${call.id}` });
-    openGoogleMeet(call);
-  }, [openGoogleMeet]);
+    showChatNotification({ title: "Call accepted", body: "Your chat call is ready.", tag: `chat-call-${call.id}` });
+  }, []);
 
   const handleRealtimeCallClosed = useCallback(({ call }) => {
     if (!call?.id) return;
@@ -736,7 +729,7 @@ export default function ChatSystem({ standalone = false }) {
     setCallNotice("The user is offline, busy, or in Do Not Disturb. A missed call was saved.");
   }, []);
 
-  useChatRealtime({
+  const callSocketRef = useChatRealtime({
     enabled: Boolean(currentUserId),
     activeConversationId,
     onMessage: handleRealtimeMessage,
@@ -1089,6 +1082,7 @@ export default function ChatSystem({ standalone = false }) {
   const currentMessages = selectedChat
     ? messagesByChat[selectedChat.id] || []
     : [];
+  const activeCallIsAccepted = activeCall?.status === "accepted";
 
   const selectBuddy = (buddy) => {
     const email = getBuddyEmail(buddy);
@@ -1379,8 +1373,8 @@ export default function ChatSystem({ standalone = false }) {
     }
   };
 
-  const handleStartConversationCall = async (type) => {
-    if (!selectedChat || callStarting) return;
+  const handleStartConversationCall = async (type, options = {}) => {
+    if ((!selectedChat && !options.chatId) || callStarting) return;
 
     setCallStarting(true);
     setSendError("");
@@ -1388,9 +1382,10 @@ export default function ChatSystem({ standalone = false }) {
 
     try {
       let chatId =
-        selectedChat.type === "channel" ? selectedChat.id : selectedChat.chatId;
+        options.chatId ||
+        (selectedChat?.type === "channel" ? selectedChat.id : selectedChat?.chatId);
 
-      if (!chatId && selectedChat.type === "person") {
+      if (!chatId && selectedChat?.type === "person") {
         const openResponse = await openDirectChatService(selectedChat.id);
         chatId =
           openResponse.data?.data?.chat_id ||
@@ -1442,7 +1437,6 @@ export default function ChatSystem({ standalone = false }) {
       setIncomingCall(null);
       if (action === "accept") {
         setActiveCall(call);
-        openGoogleMeet(call);
       }
     } catch (error) {
       const message = error?.response?.data?.message || normalizeChatError(error);
@@ -1729,17 +1723,22 @@ export default function ChatSystem({ standalone = false }) {
         onRefresh={fetchChatData}
         onSelectBuddy={selectBuddy}
         onSelectChannel={selectChannel}
+        onStartCallFromHistory={({ chatId, type }) =>
+          handleStartConversationCall(type || "audio", { chatId })
+        }
         onStatusChange={handleStatusChange}
         searchTerm={searchTerm}
         selectedChat={selectedChat}
         statusSaving={statusSaving}
+        callStarting={callStarting || Boolean(activeCall) || Boolean(incomingCall)}
         currentUser={currentUser}
         totalUnreadCount={totalUnreadCount}
         setSearchTerm={setSearchTerm}
         setTab={setTab}
       />
       <ChatWindow
-        activeCall={activeCall}
+        activeCall={activeCallIsAccepted ? null : activeCall}
+        callSocketRef={callSocketRef}
         chatBoxRef={chatBoxRef}
         callStarting={callStarting || Boolean(activeCall) || Boolean(incomingCall)}
         availableChats={conversationItems}
@@ -1780,6 +1779,26 @@ export default function ChatSystem({ standalone = false }) {
         onAccept={() => handleRespondToCall("accept")}
         onDecline={() => handleRespondToCall("decline")}
       />
+      <Dialog
+        open={Boolean(activeCallIsAccepted)}
+        fullWidth
+        maxWidth="md"
+        PaperProps={{
+          sx: {
+            bgcolor: "#0f172a",
+            borderRadius: 2,
+            overflow: "hidden",
+          },
+        }}
+      >
+        <InternalCallPanel
+          activeCall={activeCall}
+          currentUser={currentUser}
+          modal
+          onEnd={handleEndActiveCall}
+          socketRef={callSocketRef}
+        />
+      </Dialog>
       <Snackbar
         open={Boolean(callNotice)}
         autoHideDuration={6000}

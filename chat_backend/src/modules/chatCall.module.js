@@ -8,7 +8,7 @@ const ChatCall = sequelize.define(
     appName: { type: DataTypes.STRING, allowNull: false },
     conversationId: { type: DataTypes.INTEGER, allowNull: false },
     callId: { type: DataTypes.STRING(64), allowNull: false },
-    provider: { type: DataTypes.STRING, allowNull: false, defaultValue: "google_meet" },
+    provider: { type: DataTypes.STRING, allowNull: false, defaultValue: "internal_webrtc" },
     providerSpaceName: { type: DataTypes.STRING, allowNull: true },
     meetingUri: { type: DataTypes.TEXT, allowNull: true },
     meetingCode: { type: DataTypes.STRING, allowNull: true },

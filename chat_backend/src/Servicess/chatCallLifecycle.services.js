@@ -1,5 +1,4 @@
 import ChatCall from "../modules/chatCall.module.js";
-import { createMeeting, endMeeting } from "./googleMeet.services.js";
 
 export class ChatCallError extends Error {
   constructor(message, { status = 400, code = "CHAT_CALL_INVALID", details } = {}) {
@@ -62,9 +61,7 @@ export const expireStaleCalls = async ({ appName, conversationId, now = new Date
       { where: { id: record.id, status: previousStatus } },
     );
 
-    if (updated && previousStatus === "accepted" && record.providerSpaceName) {
-      await endMeeting(record.providerSpaceName).catch(() => {});
-    }
+    if (!updated) continue;
   }
 };
 
@@ -85,7 +82,7 @@ export const createRingingCall = async ({ appName, conversationId, callId, type,
     appName,
     conversationId,
     callId,
-    provider: "google_meet",
+    provider: "internal_webrtc",
     type,
     status: "ringing",
     startedByUserId: String(actor.id),
@@ -132,19 +129,13 @@ export const respondToRingingCall = async ({ appName, conversationId, callId, ac
     { where: { id: record.id, status: "ringing" } },
   );
   if (!claimed) throw new ChatCallError("This call was already answered", { status: 409, code: "CHAT_CALL_ALREADY_ANSWERED" });
-  try {
-    const meeting = await createMeeting();
-    await record.update({
-      status: "accepted",
-      providerSpaceName: meeting.name,
-      meetingUri: meeting.meetingUri,
-      meetingCode: meeting.meetingCode,
-      metadata: { ...(record.metadata || {}), acceptedBy: actor, acceptedAt: new Date().toISOString() },
-    });
-  } catch (error) {
-    await ChatCall.update({ status: "ringing" }, { where: { id: record.id, status: "connecting" } });
-    throw error;
-  }
+  await record.update({
+    status: "accepted",
+    providerSpaceName: null,
+    meetingUri: null,
+    meetingCode: null,
+    metadata: { ...(record.metadata || {}), acceptedBy: actor, acceptedAt: new Date().toISOString() },
+  });
   return toCallPayload(record);
 };
 
@@ -183,7 +174,6 @@ export const finishCall = async ({ appName, conversationId, callId, actorId }) =
     return toCallPayload(record);
   }
 
-  await endMeeting(record.providerSpaceName);
   await record.update({ status: "ended", endedAt: new Date() });
   return toCallPayload(record);
 };

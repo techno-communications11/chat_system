@@ -1,4 +1,6 @@
 import { Avatar, Badge, Box, CircularProgress, Divider, IconButton, Tooltip } from "@mui/material";
+import AttachFileIcon from "@mui/icons-material/AttachFile";
+import CallIcon from "@mui/icons-material/Call";
 import ChatBubbleIcon from "@mui/icons-material/ChatBubble";
 import { getImageUrl } from "../chatHelpers";
 import { appRailItems, getInitial } from "./sidebarUtils";
@@ -7,6 +9,8 @@ export default function SidebarRail({
   avatarUploading,
   currentUser,
   currentUserName,
+  onOpenCalls,
+  onOpenMedia,
   onTabSelect,
   totalUnreadCount,
 }) {
@@ -66,6 +70,36 @@ export default function SidebarRail({
           </IconButton>
         </Tooltip>
       ))}
+      <Tooltip title="Calls" placement="right">
+        <IconButton
+          onClick={onOpenCalls}
+          sx={{
+            width: 40,
+            height: 40,
+            color: "#1f7a6d",
+            bgcolor: "#e7f5f2",
+            borderRadius: 1.5,
+            "&:hover": { bgcolor: "#f7f8fa" },
+          }}
+        >
+          <CallIcon />
+        </IconButton>
+      </Tooltip>
+      <Tooltip title="Media" placement="right">
+        <IconButton
+          onClick={onOpenMedia}
+          sx={{
+            width: 40,
+            height: 40,
+            color: "#1f5f99",
+            bgcolor: "#e8f1fb",
+            borderRadius: 1.5,
+            "&:hover": { bgcolor: "#f7f8fa" },
+          }}
+        >
+          <AttachFileIcon />
+        </IconButton>
+      </Tooltip>
     </Box>
   );
 }

@@ -93,6 +93,7 @@ export const loginUser = async (req, res) => {
     const data = await loginChatUser({
       login: req.body?.login || req.body?.email || req.body?.username,
       password: req.body?.password,
+      appName: req.body?.type || req.body?.app || req.body?.appName || req.body?.portal,
     });
     return sendSuccess(res, "Chat login successful", data);
   } catch (error) {

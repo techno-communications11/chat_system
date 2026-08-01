@@ -11,9 +11,9 @@ export default function IncomingCallDialog({ call, error, responding, onAccept, 
         </Avatar>
         <Typography variant="h6" fontWeight={800}>{call?.startedBy?.name || "Chat user"}</Typography>
         <Typography color="text.secondary">
-          Incoming Google Meet call
+          Incoming chat call
         </Typography>
-        <Box mt={1}><Typography variant="caption" color="text.secondary">Accept to create and join a private Google Meet room.</Typography></Box>
+        <Box mt={1}><Typography variant="caption" color="text.secondary">Accept to join a private in-app call.</Typography></Box>
         {error && <Alert severity="error" sx={{ mt: 2, textAlign: "left" }}>{error}</Alert>}
       </DialogContent>
       <DialogActions sx={{ justifyContent: "center", gap: 2, pb: 3 }}>

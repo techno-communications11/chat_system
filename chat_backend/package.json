@@ -8,16 +8,13 @@
     "start": "node index.js",
     "dev": "nodemon index.js",
     "test": "node --test",
-    "google-meet:auth": "node scripts/googleMeetAuthorize.js",
     "db:sync": "node scripts/syncDatabase.js"
   },
   "dependencies": {
-    "@google-cloud/local-auth": "^3.0.1",
     "axios": "^1.8.4",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
-    "googleapis": "^173.0.0",
     "jsonwebtoken": "^9.0.2",
     "moment-timezone": "^0.6.0",
     "mysql2": "^3.15.0",

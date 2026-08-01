@@ -57,22 +57,12 @@ API health check:
 http://localhost:4701/ping
 ```
 
-## Google Meet with a personal Gmail account
+## In-app calls
 
-1. Enable the Google Meet REST API in Google Cloud.
-2. Configure the OAuth consent audience as **External** and add the Gmail address as a test user.
-3. Create an OAuth 2.0 **Desktop app**, download it, and save it as `client_secret.json` in this directory.
-4. Run `npm run google-meet:auth` locally. The first run opens a browser; sign in with the Gmail account that should own meetings and approve the Meet scope.
-5. Confirm that `token.json` was created, then start/restart the backend. Both credential files are ignored by Git.
-
-The backend reuses and refreshes `token.json`; chat users do not complete Google OAuth. To switch organizer accounts, revoke the old Google grant, delete `token.json`, and rerun the authorization command. An External OAuth app left in **Testing** gets a refresh token that expires after seven days, so move the OAuth app to an appropriate production publishing state for persistent deployment.
-
-Optional custom paths:
-
-```env
-GOOGLE_MEET_CREDENTIALS_PATH=./client_secret.json
-GOOGLE_MEET_TOKEN_PATH=./token.json
-```
+Audio and video calls are handled by the chat backend and browser clients. The
+REST API stores the call lifecycle, and Socket.IO relays WebRTC signaling
+messages between conversation participants. No external meeting API or OAuth
+setup is required.
 
 The frontend should use:
 
@@ -113,6 +103,20 @@ If no provider URL is configured for an app, chat falls back to local
 
 All chat routes live under `/chat-service` and require `Authorization: Bearer <jwt>`
 unless noted.
+
+Legacy password login can be scoped to a host portal by passing `type` in the
+request body. The same value should be sent as `x-chat-app-name` on later API
+requests:
+
+```json
+{
+  "login": "agent@example.com",
+  "password": "secret",
+  "type": "ticket_portal"
+}
+```
+
+`app`, `appName`, and `portal` are also accepted as aliases for `type`.
 
 ### Identity and discovery
 

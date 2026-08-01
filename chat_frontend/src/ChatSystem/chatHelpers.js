@@ -413,6 +413,8 @@ export const normalizeChatMessages = (payload, selectedChat) => {
           message?.message_id ||
           message?.id ||
           `${getMessageTime(message)}-${index}`,
+        chatId: message?.chatId || message?.chat_id || message?.conversationId || null,
+        chat_id: message?.chat_id || message?.chatId || message?.conversationId || null,
         text: text || (attachments.length ? "" : "[Unsupported message]"),
         sentAt: getMessageTime(message),
         timestamp: formatMessageTime(getMessageTime(message)),

@@ -96,17 +96,17 @@ const getCallDurationSeconds = (call) => {
 };
 
 const getCallHistoryText = (call, actorName) => {
-  if (call.status === "ringing") return "Started a Google Meet call";
-  if (call.status === "accepted") return `${actorName} accepted the Google Meet call`;
-  if (call.status === "declined") return `${actorName} declined the Google Meet call`;
-  if (call.status === "cancelled") return "Cancelled the Google Meet call";
-  if (call.status === "missed") return "Missed Google Meet call - recipient unavailable";
+  if (call.status === "ringing") return "Started a chat call";
+  if (call.status === "accepted") return `${actorName} accepted the chat call`;
+  if (call.status === "declined") return `${actorName} declined the chat call`;
+  if (call.status === "cancelled") return "Cancelled the chat call";
+  if (call.status === "missed") return "Missed chat call - recipient unavailable";
   if (call.status === "ended") {
     const seconds = getCallDurationSeconds(call);
     const duration = seconds >= 60 ? `${Math.floor(seconds / 60)}m ${seconds % 60}s` : `${seconds || 0}s`;
-    return `Ended the Google Meet call - ${duration}`;
+    return `Ended the chat call - ${duration}`;
   }
-  return `Google Meet call ${call.status}`;
+  return `Chat call ${call.status}`;
 };
 
 const addCallHistoryMessage = async ({ actor, conversationId, call, actorName }) => {
@@ -119,6 +119,7 @@ const addCallHistoryMessage = async ({ actor, conversationId, call, actorName })
         kind: "call_history",
         callHistory: {
           callId: call.id,
+          type: call.type,
           status: call.status,
           startedAt: call.startedAt,
           endedAt: call.endedAt,
@@ -1215,9 +1216,12 @@ export const markChatConversationRead = async ({ actor, chatId }) => {
 export const searchChatMessages = async ({ actor, query = {} }) => {
   const identity = await ensureLocalIdentity(actor);
   const search = String(query.search || query.q || "").trim();
-  const limit = normalizeLimit(query.limit, 25, 50);
+  const type = String(query.type || "").trim().toLowerCase();
+  const limit = normalizeLimit(query.limit, 25, 100);
 
-  assertString(search, "search");
+  if (!type) {
+    assertString(search, "search");
+  }
 
   const memberships = await ChatConversationParticipant.findAll({
     where: { chatIdentityId: identity.id },
@@ -1237,11 +1241,17 @@ export const searchChatMessages = async ({ actor, query = {} }) => {
     return { data: [], messages: [], pagination: { limit, hasMore: false } };
   }
 
+  const where = {
+    conversationId: { [Op.in]: conversationIds },
+  };
+
+  if (search) {
+    where.text = { [Op.like]: `%${search}%` };
+  }
+
+  const messageFetchLimit = type ? Math.min(limit * 5, 500) : limit;
   const messages = await ChatMessage.findAll({
-    where: {
-      conversationId: { [Op.in]: conversationIds },
-      text: { [Op.like]: `%${search}%` },
-    },
+    where,
     include: [
       { model: ChatIdentity, as: "sender" },
       {
@@ -1251,7 +1261,7 @@ export const searchChatMessages = async ({ actor, query = {} }) => {
       },
     ],
     order: [["createdAt", "DESC"]],
-    limit,
+    limit: messageFetchLimit,
   });
 
   await writeChatAuditLog({
@@ -1259,10 +1269,37 @@ export const searchChatMessages = async ({ actor, query = {} }) => {
     appUserId: actor.appUserId,
     provider,
     action: "search_messages",
-    metadata: { search },
+    metadata: { search, type: type || undefined },
   });
 
-  const data = messages.map(toMessage);
+  const data = messages
+    .map(toMessage)
+    .filter((message) => {
+      if (type === "calls") return message.metadata?.kind === "call_history";
+      if (type === "media") {
+        const metadata = message.metadata || {};
+        return Boolean(
+          metadata.type === "file" ||
+            metadata.file ||
+            metadata.attachment ||
+            (Array.isArray(metadata.files) && metadata.files.length > 0) ||
+            (Array.isArray(metadata.attachments) && metadata.attachments.length > 0),
+        );
+      }
+      if (type === "calls_media") {
+        const metadata = message.metadata || {};
+        return Boolean(
+          metadata.kind === "call_history" ||
+            metadata.type === "file" ||
+            metadata.file ||
+            metadata.attachment ||
+            (Array.isArray(metadata.files) && metadata.files.length > 0) ||
+            (Array.isArray(metadata.attachments) && metadata.attachments.length > 0),
+        );
+      }
+      return true;
+    })
+    .slice(0, limit);
 
   return {
     data,

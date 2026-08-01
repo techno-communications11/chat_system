@@ -17,6 +17,7 @@ import {
   Typography,
 } from "@mui/material";
 import ChatBubbleOutlineIcon from "@mui/icons-material/ChatBubbleOutline";
+import CallIcon from "@mui/icons-material/Call";
 import GroupsIcon from "@mui/icons-material/Groups";
 import VideocamIcon from "@mui/icons-material/Videocam";
 import { CHAT_APP_BASE_PATH } from "./chatRoutes";
@@ -104,7 +105,7 @@ const openChatInNewTab = (chatId) => {
   window.open(path, "_blank", "noopener,noreferrer");
 };
 
-const openCall = async (buddy) => {
+const openCall = async (buddy, type = "video") => {
   const sendId = getBuddySendId(buddy);
 
   if (!sendId) {
@@ -120,7 +121,7 @@ const openCall = async (buddy) => {
       null;
 
     if (chatId) {
-      await startConversationCallService(chatId, "video");
+      await startConversationCallService(chatId, type);
     }
 
     openChatInNewTab(sendId);
@@ -332,12 +333,23 @@ export default function ChatLauncher() {
                     </Stack>
                   }
                 />
-                <Tooltip title="Google Meet">
+                <Tooltip title="Voice call">
                   <IconButton
                     size="small"
                     onClick={(event) => {
                       event.stopPropagation();
-                      openCall(buddy);
+                      openCall(buddy, "audio");
+                    }}
+                  >
+                    <CallIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+                <Tooltip title="Video call">
+                  <IconButton
+                    size="small"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      openCall(buddy, "video");
                     }}
                   >
                     <VideocamIcon fontSize="small" />

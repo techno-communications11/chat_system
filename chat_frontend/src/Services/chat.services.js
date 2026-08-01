@@ -12,6 +12,9 @@ const withPersonEmail = (params = {}) => {
   return email ? { ...params, email } : params;
 };
 
+export const loginChatService = (payload) =>
+  api.post("/chat-service/auth/login", payload);
+
 export const getChatStatusService = () => api.get("/chat-service/me", getChatHeaders());
 
 export const updateChatStatusService = (presence) =>

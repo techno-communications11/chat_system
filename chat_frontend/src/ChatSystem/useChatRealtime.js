@@ -20,6 +20,9 @@ export function useChatRealtime({
   onCallCancelled,
   onCallEnded,
   onCallMissed,
+  onCallPeerJoined,
+  onCallPeerLeft,
+  onCallSignal,
 }) {
   const socketRef = useRef(null);
   const activeConversationIdRef = useRef(activeConversationId);
@@ -37,6 +40,9 @@ export function useChatRealtime({
     onCallCancelled,
     onCallEnded,
     onCallMissed,
+    onCallPeerJoined,
+    onCallPeerLeft,
+    onCallSignal,
   });
 
   handlersRef.current = {
@@ -53,6 +59,9 @@ export function useChatRealtime({
     onCallCancelled,
     onCallEnded,
     onCallMissed,
+    onCallPeerJoined,
+    onCallPeerLeft,
+    onCallSignal,
   };
   activeConversationIdRef.current = activeConversationId;
 
@@ -109,6 +118,9 @@ export function useChatRealtime({
     socket.on("call:declined", (payload) => handlersRef.current.onCallDeclined?.(payload));
     socket.on("call:cancelled", (payload) => handlersRef.current.onCallCancelled?.(payload));
     socket.on("call:missed", (payload) => handlersRef.current.onCallMissed?.(payload));
+    socket.on("call:peer-joined", (payload) => handlersRef.current.onCallPeerJoined?.(payload));
+    socket.on("call:peer-left", (payload) => handlersRef.current.onCallPeerLeft?.(payload));
+    socket.on("call:signal", (payload) => handlersRef.current.onCallSignal?.(payload));
 
     socket.on("call:ended", (payload) => {
       handlersRef.current.onCallEnded?.(payload);
@@ -132,4 +144,6 @@ export function useChatRealtime({
       socket.emit("leave:conversation", chatId);
     };
   }, [activeConversationId, enabled]);
+
+  return socketRef;
 }

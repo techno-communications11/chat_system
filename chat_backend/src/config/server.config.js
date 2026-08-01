@@ -1,5 +1,6 @@
-import dotenv from "dotenv";
-dotenv.config();
+import loadEnv from "./loadEnv.js";
+
+loadEnv();
 
 const serverConfig={
     dbURL:process.env.SERVER_APP_DB_URI,

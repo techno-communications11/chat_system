@@ -18,8 +18,7 @@ Serve `chat_frontend/dist` behind HTTPS and reverse-proxy the API and Socket.IO 
 ## Required secrets and settings
 
 - Configure production DB credentials, `SERVER_SECRETS`, trusted JWT issuers/audience, exact `CLIENT_URL`, `CHAT_FRAME_ANCESTORS`, and rate limits.
-- Copy `client_secret.json` and the authorized `token.json` into the backend secret mount, or point `GOOGLE_MEET_CREDENTIALS_PATH` and `GOOGLE_MEET_TOKEN_PATH` at mounted secret files. Never bake them into an image or commit them.
-- Ensure the OAuth publishing state supports the intended token lifetime. External apps in Testing require reauthorization after seven days.
+- Serve the frontend over HTTPS in production so browsers allow camera and microphone access.
 - Run exactly one schema migration job per release before starting replicas.
 
 ## Call flow smoke test
@@ -28,7 +27,7 @@ Serve `chat_frontend/dist` behind HTTPS and reverse-proxy the API and Socket.IO 
 2. Caller selects audio or video; caller sees **waiting for an answer**.
 3. Recipient sees the incoming-call dialog and browser notification even when another conversation is open.
 4. Decline clears both clients and informs the caller.
-5. Accept creates Google Meet once, closes every ringing dialog, and shows **Join Meet** to all conversation participants.
+5. Accept opens the in-app media panel for both users and connects local and remote streams.
 6. Cancel/end clears both clients and persists the terminal call status.
 
 The current in-memory rate limiter and Socket.IO process state support a single backend instance. Before horizontal scaling, use a Redis rate-limit store and the Socket.IO Redis adapter so user-room call events work across replicas.

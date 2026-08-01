@@ -25,6 +25,7 @@ import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import AlternateEmailIcon from "@mui/icons-material/AlternateEmail";
 import AttachFileIcon from "@mui/icons-material/AttachFile";
 import CloseIcon from "@mui/icons-material/Close";
+import CallIcon from "@mui/icons-material/Call";
 import DoneIcon from "@mui/icons-material/Done";
 import DoneAllIcon from "@mui/icons-material/DoneAll";
 import CodeIcon from "@mui/icons-material/Code";
@@ -66,7 +67,7 @@ import {
   PinnedMessageBanner,
   ToolBtn,
 } from "./chatWindow/ChatWindowPanels";
-import CallStatusBanner from "./calls/CallStatusBanner";
+import InternalCallPanel from "./calls/InternalCallPanel";
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 const BRAND = "#6F2DA8";
@@ -918,6 +919,7 @@ export default function ChatWindow({
   chatBoxRef,
   chats,
   currentUser,
+  callSocketRef,
   currentMessages,
   editingMessage,
   handleFileUpload,
@@ -1175,7 +1177,13 @@ export default function ChatWindow({
                   />
                 )}
                 <ToolBtn
-                  title="Google Meet"
+                  title="Voice call"
+                  icon={callStarting ? <CircularProgress size={14} /> : <CallIcon sx={{ fontSize: 17 }} />}
+                  disabled={callStarting}
+                  onClick={() => onStartConversationCall?.("audio")}
+                />
+                <ToolBtn
+                  title="Video call"
                   icon={callStarting ? <CircularProgress size={14} /> : <VideoCallIcon sx={{ fontSize: 17 }} />}
                   disabled={callStarting}
                   onClick={() => onStartConversationCall?.("video")}
@@ -1216,9 +1224,11 @@ export default function ChatWindow({
               selectedChat={selectedChat}
             />
 
-            <CallStatusBanner
+            <InternalCallPanel
               activeCall={activeCall}
+              currentUser={currentUser}
               onEnd={onEndActiveCall}
+              socketRef={callSocketRef}
             />
             <PinnedMessageBanner
               latestPinnedMessage={latestPinnedMessage}

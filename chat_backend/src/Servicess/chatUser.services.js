@@ -4,6 +4,7 @@ import { Op } from "sequelize";
 import serverConfig from "../config/server.config.js";
 import ChatUser from "../modules/chatUser.module.js";
 import ChatRole from "../modules/chatRole.module.js";
+import { normalizeAppName } from "./applicationDirectory.services.js";
 
 const hashPassword = (password, salt = crypto.randomBytes(16).toString("hex")) => {
   const hash = crypto.pbkdf2Sync(String(password), salt, 120000, 64, "sha512").toString("hex");
@@ -48,8 +49,11 @@ const toPublicUser = (user) => {
   };
 };
 
-const issueToken = (user) => {
+const issueToken = (user, { appName } = {}) => {
   const publicUser = toPublicUser(user);
+  const appClaim = appName || process.env.CHAT_LOCAL_APP_NAME;
+  const sourceApp = appClaim ? normalizeAppName(appClaim) : null;
+  const appClaims = sourceApp ? { app: sourceApp, apps: [sourceApp] } : {};
 
   return jwt.sign(
     {
@@ -62,6 +66,7 @@ const issueToken = (user) => {
       role: publicUser.role,
       roles: publicUser.roles,
       tenant_id: process.env.CHAT_LOCAL_TENANT_ID || "local",
+      ...appClaims,
       jti: crypto.randomUUID(),
     },
     serverConfig.secretKey,
@@ -152,7 +157,7 @@ export const registerChatUser = async ({
   };
 };
 
-export const loginChatUser = async ({ login, password }) => {
+export const loginChatUser = async ({ login, password, appName }) => {
   if (!login || !password) {
     const error = new Error("login and password are required");
     error.status = 400;
@@ -182,7 +187,7 @@ export const loginChatUser = async ({ login, password }) => {
 
   return {
     user: toPublicUser(fullUser),
-    token: issueToken(fullUser),
+    token: issueToken(fullUser, { appName }),
   };
 };
 

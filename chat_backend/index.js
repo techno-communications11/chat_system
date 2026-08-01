@@ -1,14 +1,14 @@
 import express from "express";
 import cors from "cors";
-import dotenv from "dotenv";
 import http from "http";
+import loadEnv from "./src/config/loadEnv.js";
 import router from "./src/routing/index.js";
 import sequelize, { ensureDatabase } from "./src/config/db.js";
 import { syncModels } from "./src/modules/index.js";
 import { initChatSocket } from "./src/realtime/chatSocket.js";
 import { apiRateLimit, platformSecurityHeaders } from "./src/middlewares/platformSecurity.middleware.js";
 
-dotenv.config();
+loadEnv();
 
 const app = express();
 app.disable("x-powered-by");

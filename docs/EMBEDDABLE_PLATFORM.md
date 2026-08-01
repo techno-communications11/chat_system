@@ -134,13 +134,18 @@ Client emits `join:conversation(chatId, ack)` and `leave:conversation(chatId)`. 
 
 Container mode fills its parent. Floating, drawer, modal, and full-page layouts are applied by the SDK without forking the chat UI.
 
-## Google Meet calls
+## In-app calls
 
-Audio and video actions first persist a `ringing` call and notify every other conversation participant. The recipient must accept or decline. Only acceptance creates a Google Meet space through `POST https://meet.googleapis.com/v2/spaces`; the returned `meetingUri` is then distributed through `call:accepted`. Ending an accepted call invokes `spaces.endActiveConference`. Call/provider state is stored in `chat_calls`, so the client never receives Google OAuth credentials.
+Audio and video actions first persist a `ringing` call and notify every other
+conversation participant. The recipient must accept or decline. Acceptance
+marks the call as `accepted`, opens an in-app media panel, and uses Socket.IO to
+relay WebRTC offer, answer, ICE candidate, join, and leave messages between
+participants. No external meeting API, OAuth consent, or third-party meeting
+URL is used.
 
-Enable the Google Meet REST API, create an OAuth 2.0 **Desktop app**, download it as `chat_backend/client_secret.json`, and run `npm run google-meet:auth` locally. The command opens browser consent once and stores a reusable `token.json`; both files are ignored by Git. The backend uses `googleapis` and `@google-cloud/local-auth` with only `https://www.googleapis.com/auth/meetings.space.created`. Google Meet uses the same meeting-space resource for audio and video; an audio call is labeled as audio by chat and users join Meet with their camera disabled.
-
-The current Google Node quickstart lists a Google Workspace account with Meet enabled as a prerequisite. Desktop OAuth can authenticate a personal Gmail account, but whether `spaces.create` is allowed is controlled by Google's account/API eligibility; an API `403` after successful consent means the account is not eligible and cannot be bypassed in application code.
+Call/provider state is stored in `chat_calls` with provider
+`internal_webrtc`. Browser media permissions are requested only after a call is
+accepted.
 
 ## Security and operations
 

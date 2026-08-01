@@ -4,7 +4,8 @@ import { Box } from "@mui/material";
 import ChatLauncher from "./ChatSystem/ChatLauncher";
 import ChatSystem from "./ChatSystem/Chatsystem";
 import { CHAT_APP_BASE_PATH } from "./ChatSystem/chatRoutes";
-import { getTokenUser, storeAuthToken, storeChatAppName } from "./utils/authToken";
+import LoginPage from "./LoginPage";
+import { getStoredAuthToken, getTokenUser, storeAuthToken, storeChatAppName } from "./utils/authToken";
 
 const tokenParamNames = ["token", "authToken", "access_token"];
 const appParamNames = ["app", "appName", "sourceApp"];
@@ -149,14 +150,21 @@ function ChatPage() {
   );
 }
 
+function ProtectedChatPage() {
+  if (!getStoredAuthToken()) return <Navigate to="/login" replace />;
+
+  return <ChatPage />;
+}
+
 function App() {
   return (
     <Router>
       <TicketingTokenBridge>
         <Routes>
           <Route path="/" element={<Navigate to={CHAT_APP_BASE_PATH} replace />} />
-          <Route path={CHAT_APP_BASE_PATH} element={<ChatPage />} />
-          <Route path={`${CHAT_APP_BASE_PATH}/:id`} element={<ChatPage />} />
+          <Route path="/login" element={<LoginPage />} />
+          <Route path={CHAT_APP_BASE_PATH} element={<ProtectedChatPage />} />
+          <Route path={`${CHAT_APP_BASE_PATH}/:id`} element={<ProtectedChatPage />} />
           <Route
             path="/launcher"
             element={
