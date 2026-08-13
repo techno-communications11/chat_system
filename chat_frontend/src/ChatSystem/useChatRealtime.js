@@ -9,6 +9,7 @@ export function useChatRealtime({
   activeConversationId,
   onMessage,
   onMessageUpdated,
+  onTyping,
   onMessageRead,
   onReactionAdded,
   onPresence,
@@ -29,6 +30,7 @@ export function useChatRealtime({
   const handlersRef = useRef({
     onMessage,
     onMessageUpdated,
+    onTyping,
     onMessageRead,
     onReactionAdded,
     onPresence,
@@ -48,6 +50,7 @@ export function useChatRealtime({
   handlersRef.current = {
     onMessage,
     onMessageUpdated,
+    onTyping,
     onMessageRead,
     onReactionAdded,
     onPresence,
@@ -92,6 +95,7 @@ export function useChatRealtime({
     socket.on("message:updated", (payload) => {
       handlersRef.current.onMessageUpdated?.(payload);
     });
+    socket.on("typing:update", (payload) => handlersRef.current.onTyping?.(payload));
 
     socket.on("message:read", (payload) => {
       handlersRef.current.onMessageRead?.(payload);

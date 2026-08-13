@@ -18,6 +18,8 @@ import GroupsIcon from "@mui/icons-material/Groups";
 import InfoIcon from "@mui/icons-material/Info";
 import NotificationsActiveIcon from "@mui/icons-material/NotificationsActive";
 import NotificationsOffIcon from "@mui/icons-material/NotificationsOff";
+import AttachFileIcon from "@mui/icons-material/AttachFile";
+import DeleteSweepIcon from "@mui/icons-material/DeleteSweep";
 import {
   getBuddyEmail,
   getBuddyName,
@@ -25,8 +27,8 @@ import {
   getImageUrl,
 } from "../chatHelpers";
 
-const BRAND_SOFT = "#ede9f8";
-const BRAND_TEXT = "#4a1e72";
+const BRAND_SOFT = "var(--chat-soft)";
+const BRAND_TEXT = "var(--chat-brand-text)";
 
 export default function GroupActions({
   anchorEl,
@@ -41,6 +43,8 @@ export default function GroupActions({
   onCloseMenu,
   onLeaveGroup,
   onOpenInfo,
+  onOpenMedia,
+  onClearChat,
   onOpenLeaveConfirm,
   onToggleMute,
   open,
@@ -77,17 +81,34 @@ export default function GroupActions({
           </ListItemButton>
           <ListItemButton onClick={onToggleMute} sx={{ gap: 1.25, py: 1 }}>
             {isGroupMuted ? (
-              <NotificationsActiveIcon sx={{ fontSize: 18, color: "text.secondary" }} />
+              <NotificationsActiveIcon
+                sx={{ fontSize: 18, color: "text.secondary" }}
+              />
             ) : (
-              <NotificationsOffIcon sx={{ fontSize: 18, color: "text.secondary" }} />
+              <NotificationsOffIcon
+                sx={{ fontSize: 18, color: "text.secondary" }}
+              />
             )}
             <ListItemText
-              primary={isGroupMuted ? "Unmute notifications" : "Mute notifications"}
+              primary={
+                isGroupMuted ? "Unmute notifications" : "Mute notifications"
+              }
               primaryTypographyProps={{ fontSize: 13.5, fontWeight: 600 }}
             />
           </ListItemButton>
+          <ListItemButton onClick={onOpenMedia} sx={{ gap: 1.25, py: 1 }}>
+            <AttachFileIcon sx={{ fontSize: 18, color: "text.secondary" }} />
+            <ListItemText primary="Media, links & files" primaryTypographyProps={{ fontSize: 13.5, fontWeight: 600 }} />
+          </ListItemButton>
+          <ListItemButton onClick={onClearChat} sx={{ gap: 1.25, py: 1 }}>
+            <DeleteSweepIcon sx={{ fontSize: 18, color: "error.main" }} />
+            <ListItemText primary="Clear chat" primaryTypographyProps={{ fontSize: 13.5, fontWeight: 600, color: "error.main" }} />
+          </ListItemButton>
           <Divider />
-          <ListItemButton onClick={onOpenLeaveConfirm} sx={{ gap: 1.25, py: 1 }}>
+          <ListItemButton
+            onClick={onOpenLeaveConfirm}
+            sx={{ gap: 1.25, py: 1 }}
+          >
             <ExitToAppIcon sx={{ fontSize: 18, color: "#d32f2f" }} />
             <ListItemText
               primary="Exit group"
@@ -101,7 +122,12 @@ export default function GroupActions({
         </List>
       </Popover>
 
-      <Dialog open={groupInfoOpen} onClose={onCloseInfo} fullWidth maxWidth="xs">
+      <Dialog
+        open={groupInfoOpen}
+        onClose={onCloseInfo}
+        fullWidth
+        maxWidth="xs"
+      >
         <DialogTitle>Group info</DialogTitle>
         <DialogContent dividers>
           <Box display="flex" alignItems="center" gap={1.25} mb={2}>

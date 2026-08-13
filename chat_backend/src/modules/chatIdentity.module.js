@@ -52,6 +52,7 @@ const ChatIdentity = sequelize.define(
         unique: true,
         fields: ["appName", "appUserId", "provider"],
       },
+      { fields: ["appName", "provider", "providerUserId"] },
     ],
   }
 );

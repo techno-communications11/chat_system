@@ -1,5 +1,6 @@
 import { Avatar, Badge, Box, CircularProgress, Divider, IconButton, Tooltip } from "@mui/material";
 import AttachFileIcon from "@mui/icons-material/AttachFile";
+import SettingsIcon from "@mui/icons-material/Settings";
 import CallIcon from "@mui/icons-material/Call";
 import ChatBubbleIcon from "@mui/icons-material/ChatBubble";
 import { getImageUrl } from "../chatHelpers";
@@ -11,20 +12,22 @@ export default function SidebarRail({
   currentUserName,
   onOpenCalls,
   onOpenMedia,
+  onSettingsOpen,
   onTabSelect,
   totalUnreadCount,
 }) {
   return (
     <Box
       sx={{
-        bgcolor: "#ffffff",
-        color: "#ffffff",
+        bgcolor: "background.paper",
+        color: "text.primary",
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
         py: 1,
         gap: 0.75,
-        borderRight: "1px solid #edf0f4",
+        borderRight: "1px solid",
+        borderColor: "divider",
       }}
     >
       <Tooltip title={currentUserName} placement="right">
@@ -39,7 +42,7 @@ export default function SidebarRail({
           )}
         </Avatar>
       </Tooltip>
-      <Divider flexItem sx={{ borderColor: "#edf0f4", my: 0.5 }} />
+      <Divider flexItem sx={{ borderColor: "divider", my: 0.5 }} />
       {appRailItems.map((item) => (
         <Tooltip key={item.key} title={item.label} placement="right">
           <IconButton
@@ -48,9 +51,9 @@ export default function SidebarRail({
               width: 40,
               height: 40,
               color: "#6F2DA8",
-              bgcolor: "#f2e9f8",
+              bgcolor: "var(--chat-soft)",
               borderRadius: 1.5,
-              "&:hover": { bgcolor: "#f7f8fa" },
+              "&:hover": { bgcolor: "var(--chat-subtle)" },
             }}
           >
             <Badge
@@ -77,9 +80,9 @@ export default function SidebarRail({
             width: 40,
             height: 40,
             color: "#1f7a6d",
-            bgcolor: "#e7f5f2",
+            bgcolor: "var(--chat-soft)",
             borderRadius: 1.5,
-            "&:hover": { bgcolor: "#f7f8fa" },
+            "&:hover": { bgcolor: "var(--chat-subtle)" },
           }}
         >
           <CallIcon />
@@ -92,12 +95,27 @@ export default function SidebarRail({
             width: 40,
             height: 40,
             color: "#1f5f99",
-            bgcolor: "#e8f1fb",
+            bgcolor: "var(--chat-blue-soft)",
             borderRadius: 1.5,
-            "&:hover": { bgcolor: "#f7f8fa" },
+            "&:hover": { bgcolor: "var(--chat-subtle)" },
           }}
         >
           <AttachFileIcon />
+        </IconButton>
+      </Tooltip>
+      <Box sx={{ flex: 1 }} />
+      <Tooltip title="Settings" placement="right">
+        <IconButton
+          onClick={onSettingsOpen}
+          sx={{
+            width: 40,
+            height: 40,
+            color: "text.secondary",
+            borderRadius: 1.5,
+            "&:hover": { bgcolor: "var(--chat-subtle)", color: "text.primary" },
+          }}
+        >
+          <SettingsIcon />
         </IconButton>
       </Tooltip>
     </Box>

@@ -5,15 +5,54 @@ info:
   description: Tenant-scoped API. The tenant is always obtained from the verified JWT.
 servers:
   - url: /api/v1/chat
+    description: Versioned API (recommended)
+  - url: /chat-service
+    description: Legacy-compatible API prefix
 security:
   - bearerAuth: []
 tags:
+  - name: Health
+  - name: Authentication
   - name: Identity
   - name: Conversations
   - name: Messages
   - name: Channels
   - name: Administration
 paths:
+  /ping:
+    get:
+      security: []
+      tags: [Health]
+      summary: Check whether the backend is awake
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/v1/health:
+    get:
+      security: []
+      tags: [Health]
+      summary: Check API health and version
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /auth/register:
+    post:
+      security: []
+      tags: [Authentication]
+      summary: Register a local chat user
+      description: Disabled unless CHAT_ENABLE_PASSWORD_AUTH=true.
+      requestBody: { $ref: '#/components/requestBodies/RegisterBody' }
+      responses:
+        '201': { $ref: '#/components/responses/Success' }
+        '400': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+  /auth/login:
+    post:
+      security: []
+      tags: [Authentication]
+      summary: Authenticate a local chat user
+      description: Disabled unless CHAT_ENABLE_PASSWORD_AUTH=true. Returns a short-lived JWT.
+      requestBody: { $ref: '#/components/requestBodies/LoginBody' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
   /me:
     get: { tags: [Identity], summary: Get current chat identity, responses: { '200': { $ref: '#/components/responses/Success' } } }
   /me/status:
@@ -98,7 +137,18 @@ paths:
       parameters: [ { $ref: '#/components/parameters/ChatId' } ]
       requestBody: { $ref: '#/components/requestBodies/JsonBody' }
       responses: { '201': { $ref: '#/components/responses/Success' } }
+    delete:
+      tags: [Messages]
+      summary: Clear conversation history for the current account
+      description: Hides existing messages for this participant only. Other participants retain their message history.
+      parameters: [ { $ref: '#/components/parameters/ChatId' } ]
+      responses: { '200': { $ref: '#/components/responses/Success' }, '401': { $ref: '#/components/responses/Error' }, '404': { $ref: '#/components/responses/Error' } }
   /conversations/{chatId}/messages/{messageId}:
+    delete:
+      tags: [Messages]
+      summary: Soft-delete a message sent by the current user
+      parameters: [ { $ref: '#/components/parameters/ChatId' }, { $ref: '#/components/parameters/MessageId' } ]
+      responses: { '200': { $ref: '#/components/responses/Success' }, '404': { $ref: '#/components/responses/Error' } }
     patch:
       tags: [Messages]
       summary: Edit a message
@@ -198,8 +248,33 @@ components:
     MessageId: { name: messageId, in: path, required: true, schema: { type: string } }
     Search: { name: search, in: query, schema: { type: string } }
     Limit: { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100 } }
+    AppNameHeader: { name: x-chat-app-name, in: header, required: false, schema: { type: string }, description: Host application identifier allowed by the JWT }
   requestBodies:
     JsonBody: { required: true, content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+    RegisterBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [email, username, displayName, password]
+            properties:
+              email: { type: string, format: email }
+              username: { type: string, minLength: 1, maxLength: 100 }
+              displayName: { type: string, minLength: 1, maxLength: 200 }
+              password: { type: string, format: password, minLength: 8, maxLength: 256 }
+              roleName: { type: string, example: member }
+    LoginBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [login, password]
+            properties:
+              login: { type: string }
+              password: { type: string, format: password }
+              type: { type: string, description: Host application name }
   responses:
     Success:
       description: Successful response

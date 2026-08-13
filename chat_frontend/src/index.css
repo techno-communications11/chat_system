@@ -4,12 +4,86 @@
 
 html,
 body,
+button,
+input,
+textarea,
+select,
+.MuiTypography-root,
+.MuiButton-root,
+.MuiInputBase-root {
+  font-family: Inter, "SF Pro Display", "SF Pro Text", Roboto, "Open Sans", Arial, sans-serif;
+}
+
+html,
+body,
 #root {
   min-height: 100%;
   margin: 0;
 }
 
 body {
-  font-family: Inter, Roboto, Arial, sans-serif;
-  background: #f3f5f8;
+  font-family: Inter, Roboto, "SF Pro Display", "SF Pro Text", "Open Sans", Arial, sans-serif;
+  background: #f5f7fb;
+  transition: background-color 180ms ease, color 180ms ease;
+}
+
+button,
+.MuiButtonBase-root {
+  -webkit-tap-highlight-color: transparent;
+}
+
+::selection {
+  background: rgba(103, 80, 232, 0.2);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(103, 80, 232, 0.35) transparent;
+}
+
+::-webkit-scrollbar { width: 7px; height: 7px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(103, 80, 232, 0.28); border-radius: 99px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(103, 80, 232, 0.5); }
+
+@keyframes chatMessageIn {
+  from { opacity: 0; transform: translateY(5px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.chat-message-in { animation: chatMessageIn 180ms ease-out both; }
+
+@media (max-width: 767.98px) {
+  html,
+  body,
+  #root {
+    width: 100%;
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  .MuiPopover-paper,
+  .MuiDialog-paper {
+    max-width: calc(100vw - 24px);
+  }
+}
+
+:root {
+  --chat-surface: #ffffff;
+  --chat-soft: #eeebff;
+  --chat-subtle: #f1f3f9;
+  --chat-blue-soft: #e8f7f5;
+  --chat-brand-text: #6750e8;
+}
+
+html[data-chat-theme="dark"] body {
+  background: #0f1220;
+}
+
+html[data-chat-theme="dark"] {
+  --chat-surface: #171b2b;
+  --chat-soft: #29254c;
+  --chat-subtle: #20263a;
+  --chat-blue-soft: #173c3c;
+  --chat-brand-text: #a99eff;
 }

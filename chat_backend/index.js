@@ -1,60 +1,18 @@
-import express from "express";
-import cors from "cors";
 import http from "http";
-import loadEnv from "./src/config/loadEnv.js";
-import router from "./src/routing/index.js";
+import https from "https";
+import fs from "fs";
+import { createApp, allowedOrigins } from "./src/app.js";
 import sequelize, { ensureDatabase } from "./src/config/db.js";
 import { syncModels } from "./src/modules/index.js";
 import { initChatSocket } from "./src/realtime/chatSocket.js";
-import { apiRateLimit, platformSecurityHeaders } from "./src/middlewares/platformSecurity.middleware.js";
+import { runtimeConfig, validateRuntimeConfig } from "./src/config/runtime.config.js";
 
-loadEnv();
+validateRuntimeConfig();
 
-const app = express();
-app.disable("x-powered-by");
-app.set("trust proxy", Number(process.env.TRUST_PROXY_HOPS || 1));
-const PORT = process.env.PORT || 4600;
-const configuredClientUrls = (process.env.CLIENT_URL || "")
-  .split(",")
-  .map((url) => url.trim())
-  .filter(Boolean);
-const allowedOrigins = new Set([
-  ...configuredClientUrls,
-  "http://localhost:5174",
-  "http://127.0.0.1:5174",
-]);
+const app = createApp();
+const PORT = runtimeConfig.port;
 let server;
 let isShuttingDown = false;
-
-app.use(platformSecurityHeaders);
-app.use(apiRateLimit);
-app.use(
-  cors({
-    origin(origin, callback) {
-      if (!origin || allowedOrigins.has(origin)) {
-        callback(null, true);
-        return;
-      }
-
-      callback(new Error(`Origin ${origin} is not allowed by CORS`));
-    },
-    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-    allowedHeaders: [
-      "Content-Type",
-      "Authorization",
-      "x-access-token",
-      "x-chat-app-name",
-      "x-file-name",
-      "x-file-content-type",
-      "x-file-size",
-    ],
-    credentials: true,
-  })
-);
-
-app.use(express.json({ limit: "5mb", type: ["application/json", "text/plain"] }));
-app.use(express.urlencoded({ extended: true, limit: "5mb" }));
-app.use("/", router);
 
 const start = async () => {
   try {
@@ -63,11 +21,23 @@ const start = async () => {
     await syncModels();
     console.log("Chat database connected and synced");
 
-    const httpServer = http.createServer(app);
+    const httpsKeyPath = process.env.HTTPS_KEY_PATH;
+    const httpsCertPath = process.env.HTTPS_CERT_PATH;
+    const httpServer = httpsKeyPath && httpsCertPath
+      ? https.createServer(
+          {
+            key: fs.readFileSync(httpsKeyPath),
+            cert: fs.readFileSync(httpsCertPath),
+          },
+          app,
+        )
+      : http.createServer(app);
     initChatSocket(httpServer, allowedOrigins);
 
     server = httpServer.listen(PORT, () => {
-      console.log(`Chat backend running on http://localhost:${PORT}`);
+      console.log(
+        `Chat backend running on ${httpsKeyPath && httpsCertPath ? "https" : "http"}://localhost:${PORT}`,
+      );
     });
 
     server.on("error", (error) => {

@@ -1,13 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
+  Avatar,
   Box,
   Button,
   Checkbox,
+  Chip,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
+  InputAdornment,
   List,
   ListItemButton,
   ListItemText,
@@ -15,6 +18,8 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
+import SearchIcon from "@mui/icons-material/Search";
+import GroupIcon from "@mui/icons-material/Group";
 import { useNavigate, useParams } from "react-router-dom";
 import ChatSidebar from "./ChatSidebar";
 import ChatWindow from "./ChatWindow";
@@ -38,6 +43,7 @@ import {
 import {
   requestChatNotificationPermission,
   showChatNotification,
+  playMessageNotificationSound,
 } from "./chatNotifications";
 import { useChatRealtime } from "./useChatRealtime";
 import IncomingCallDialog from "./calls/IncomingCallDialog";
@@ -45,12 +51,14 @@ import InternalCallPanel from "./calls/InternalCallPanel";
 import { useCallTone } from "./calls/useCallTone";
 import {
   getChatMessagesService,
+  clearChatHistoryService,
   getChatStatusService,
   getChatUsersService,
   getChatConversationsService,
   addGroupMembersService,
   addMessageReactionService,
   createGroupChatService,
+  deleteConversationMessageService,
   editConversationMessageService,
   leaveGroupConversationService,
   markConversationReadService,
@@ -62,11 +70,14 @@ import {
   shareConversationFileService,
   startConversationCallService,
   endConversationCallService,
+  getActiveConversationCallsService,
   respondConversationCallService,
   updateChatAvatarService,
   updateChatStatusService,
 } from "../Services/chat.services";
-import { getTokenUser } from "../utils/authToken";
+import { clearAuthToken, getTokenUser } from "../utils/authToken";
+import { getInitial } from "./sidebar/sidebarUtils";
+import { AddMembersDialog, GroupCreationDialog } from "./chatWindow/GroupDialogs";
 
 export default function ChatSystem({ standalone = false }) {
   const navigate = useNavigate();
@@ -84,7 +95,11 @@ export default function ChatSystem({ standalone = false }) {
   const [loadError, setLoadError] = useState("");
   const [selectedChat, setSelectedChat] = useState(null);
   const [messagesByChat, setMessagesByChat] = useState({});
+  const [typingUsersByChat, setTypingUsersByChat] = useState({});
+  const [messagePaginationByChat, setMessagePaginationByChat] = useState({});
+  const [loadingOlderMessages, setLoadingOlderMessages] = useState(false);
   const [inputValue, setInputValue] = useState("");
+  const [enterToSend, setEnterToSend] = useState(() => localStorage.getItem("chat-enter-to-send") === "true");
   const [replyToMessage, setReplyToMessage] = useState(null);
   const [editingMessage, setEditingMessage] = useState(null);
   const [pendingFiles, setPendingFiles] = useState([]);
@@ -95,6 +110,7 @@ export default function ChatSystem({ standalone = false }) {
   const [groupDialogOpen, setGroupDialogOpen] = useState(false);
   const [groupTitle, setGroupTitle] = useState("");
   const [groupUserIds, setGroupUserIds] = useState([]);
+  const [groupSearch, setGroupSearch] = useState("");
   const [groupError, setGroupError] = useState("");
   const [creatingGroup, setCreatingGroup] = useState(false);
   const [addMembersDialogOpen, setAddMembersDialogOpen] = useState(false);
@@ -111,13 +127,25 @@ export default function ChatSystem({ standalone = false }) {
   const [callError, setCallError] = useState("");
   const [callNotice, setCallNotice] = useState("");
   useCallTone(incomingCall ? "incoming" : activeCall?.status === "ringing" ? "outgoing" : null);
-  const [mutedGroupIds, setMutedGroupIds] = useState(() => {
+
+  const [mutedChatIds, setMutedChatIds] = useState(() => {
     try {
-      return JSON.parse(localStorage.getItem("chat_muted_group_ids") || "[]");
+      return JSON.parse(localStorage.getItem("chat_muted_chat_ids") || localStorage.getItem("chat_muted_group_ids") || "[]").map(String);
     } catch {
       return [];
     }
   });
+  const [blockedUserIds, setBlockedUserIds] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem("chat_blocked_user_ids") || "[]").map(String);
+    } catch {
+      return [];
+    }
+  });
+  const filterBlockedMessages = useCallback(
+    (messages = []) => messages.filter((message) => !blockedUserIds.includes(String(message.authorId))),
+    [blockedUserIds],
+  );
   const [profileUser, setProfileUser] = useState(() => {
     const tokenUser = getTokenUser();
 
@@ -131,11 +159,39 @@ export default function ChatSystem({ standalone = false }) {
   });
   const currentUser = profileUser;
   const currentUserId = String(
-    currentUser?.id || currentUser?.userId || currentUser?.user_id || ""
+    currentUser?.appUserId ||
+      currentUser?.app_user_id ||
+      currentUser?.userId ||
+      currentUser?.user_id ||
+      currentUser?.id ||
+      ""
   );
   const currentUserEmail = String(
     currentUser?.email || currentUser?.email_id || currentUser?.mailid || "",
   ).toLowerCase();
+
+  useEffect(() => {
+    if (!currentUserId) return undefined;
+    let cancelled = false;
+
+    getActiveConversationCallsService()
+      .then((response) => {
+        if (cancelled) return;
+        const calls = response.data?.data?.calls || response.data?.data || [];
+        const call = Array.isArray(calls) ? calls[0] : null;
+        if (!call?.id) return;
+        if (String(call.startedBy?.id) === currentUserId || call.status !== "ringing") {
+          setActiveCall(call);
+        } else {
+          setIncomingCall(call);
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentUserId]);
 
   const isCurrentUserRecord = useCallback(
     (item) => {
@@ -382,6 +438,7 @@ export default function ChatSystem({ standalone = false }) {
 
       const senderId = getMessageSenderId(message);
       const isOwnMessage = senderId && senderId === currentUserId;
+      if (!isOwnMessage && blockedUserIds.includes(String(senderId))) return;
       const messageId =
         message?.message_id ||
         message?.messageId ||
@@ -412,6 +469,7 @@ export default function ChatSystem({ standalone = false }) {
       });
 
       if (!normalizedMessage) return;
+      if (blockedUserIds.includes(String(normalizedMessage.authorId))) return;
 
       const isActiveChat =
         (selectedChat?.type === "channel" &&
@@ -497,7 +555,7 @@ export default function ChatSystem({ standalone = false }) {
       });
 
       if (!isOwnMessage && (!isActiveChat || document.hidden)) {
-        if (mutedGroupIds.includes(String(chatId))) return;
+        if (mutedChatIds.includes(String(chatId))) return;
 
         const senderName =
           message?.sender?.name ||
@@ -516,13 +574,14 @@ export default function ChatSystem({ standalone = false }) {
             }
           },
         });
+        playMessageNotificationSound();
       }
 
       if (shouldTreatAsRead && !isOwnMessage) {
         markConversationReadService(chatId).catch(() => {});
       }
     },
-    [buddies, channels, currentUser, currentUserId, mutedGroupIds, navigate, selectedChat],
+    [blockedUserIds, buddies, channels, currentUser, currentUserId, mutedChatIds, navigate, selectedChat],
   );
 
   const handleRealtimeMessageUpdated = useCallback(
@@ -596,7 +655,7 @@ export default function ChatSystem({ standalone = false }) {
       if (
         !chatId ||
         !reaction?.emoji ||
-        mutedGroupIds.includes(String(chatId)) ||
+        mutedChatIds.includes(String(chatId)) ||
         (actorId && actorId === currentUserId) ||
         (actorEmail && actorEmail === currentUserEmail)
       ) {
@@ -628,7 +687,7 @@ export default function ChatSystem({ standalone = false }) {
         },
       });
     },
-    [buddies, channels, currentUserEmail, currentUserId, mutedGroupIds, navigate],
+    [buddies, channels, currentUserEmail, currentUserId, mutedChatIds, navigate],
   );
 
   const handleRealtimePresence = useCallback(({ userId, presence, user }) => {
@@ -677,7 +736,10 @@ export default function ChatSystem({ standalone = false }) {
 
   const handleRealtimeCallRinging = useCallback(({ call }) => {
     if (!call?.id) return;
-    if (String(call.startedBy?.id) === currentUserId) {
+    const callerId = call.startedBy?.id || call.startedBy?.userId || call.startedBy?.user_id;
+    if (blockedUserIds.includes(String(callerId))) return;
+    if (mutedChatIds.includes(String(call.chatId || call.chat_id || ""))) return;
+    if (String(callerId) === currentUserId) {
       setActiveCall(call);
       return;
     }
@@ -688,14 +750,16 @@ export default function ChatSystem({ standalone = false }) {
       body: `${call.startedBy?.name || "A chat user"} is calling you`,
       tag: `chat-call-${call.id}`,
     });
-  }, [currentUserId]);
+  }, [blockedUserIds, currentUserId, mutedChatIds]);
 
   const handleRealtimeCallAccepted = useCallback(({ call }) => {
     if (!call?.id) return;
+    const peerId = call.startedBy?.id || call.startedBy?.userId || call.startedBy?.user_id;
+    if (blockedUserIds.includes(String(peerId)) && String(peerId) !== currentUserId) return;
     setIncomingCall((prev) => (prev?.id === call.id ? null : prev));
     setActiveCall(call);
     showChatNotification({ title: "Call accepted", body: "Your chat call is ready.", tag: `chat-call-${call.id}` });
-  }, []);
+  }, [blockedUserIds, currentUserId]);
 
   const handleRealtimeCallClosed = useCallback(({ call }) => {
     if (!call?.id) return;
@@ -734,6 +798,12 @@ export default function ChatSystem({ standalone = false }) {
     activeConversationId,
     onMessage: handleRealtimeMessage,
     onMessageUpdated: handleRealtimeMessageUpdated,
+    onTyping: useCallback(({ chatId, userId, name, typing }) => {
+      setTypingUsersByChat((prev) => ({
+        ...prev,
+        [String(chatId)]: typing ? { userId: String(userId), name } : null,
+      }));
+    }, []),
     onMessageRead: handleRealtimeMessageRead,
     onReactionAdded: handleRealtimeReactionAdded,
     onPresence: handleRealtimePresence,
@@ -847,19 +917,23 @@ export default function ChatSystem({ standalone = false }) {
 
       await markConversationReadService(chatId);
       const messagesResponse = await getChatMessagesService(chatId);
-      const normalizedMessages = normalizeChatMessages(
+      const normalizedMessages = filterBlockedMessages(normalizeChatMessages(
         messagesResponse.data?.data,
         chat
-      );
+      ));
 
       setMessagesByChat((prev) => ({
         ...prev,
         [chat.id]: normalizedMessages,
       }));
+      setMessagePaginationByChat((prev) => ({
+        ...prev,
+        [chat.id]: messagesResponse.data?.data?.pagination || { hasMore: false },
+      }));
     } catch (error) {
       setSendError(normalizeChatError(error));
     }
-  }, [clearUnreadForChat]);
+  }, [clearUnreadForChat, filterBlockedMessages]);
 
   const loadChannelHistory = useCallback(async (chat) => {
     if (!chat || chat.type !== "channel" || !chat.id) return;
@@ -870,19 +944,67 @@ export default function ChatSystem({ standalone = false }) {
       clearUnreadForChat({ chatId: chat.id });
       await markConversationReadService(chat.id);
       const messagesResponse = await getChatMessagesService(chat.id);
-      const normalizedMessages = normalizeChatMessages(
+      const normalizedMessages = filterBlockedMessages(normalizeChatMessages(
         messagesResponse.data?.data,
         chat,
-      );
+      ));
 
       setMessagesByChat((prev) => ({
         ...prev,
         [chat.id]: normalizedMessages,
       }));
+      setMessagePaginationByChat((prev) => ({
+        ...prev,
+        [chat.id]: messagesResponse.data?.data?.pagination || { hasMore: false },
+      }));
     } catch (error) {
       setSendError(normalizeChatError(error));
     }
-  }, [clearUnreadForChat]);
+  }, [clearUnreadForChat, filterBlockedMessages]);
+
+  const loadOlderMessages = useCallback(async () => {
+    if (!selectedChat || loadingOlderMessages) return;
+
+    const chatKey = selectedChat.id;
+    const pagination = messagePaginationByChat[chatKey];
+    if (!pagination?.hasMore || !pagination.nextCursor) return;
+
+    const chatId = selectedChat.chatId || selectedChat.id;
+    const previousHeight = chatBoxRef.current?.scrollHeight || 0;
+    setLoadingOlderMessages(true);
+
+    try {
+      const response = await getChatMessagesService(chatId, {
+        limit: 50,
+        before: pagination.nextCursor,
+      });
+      const payload = response.data?.data;
+      const olderMessages = filterBlockedMessages(normalizeChatMessages(payload, selectedChat));
+
+      setMessagesByChat((prev) => {
+        const existing = prev[chatKey] || [];
+        const existingIds = new Set(existing.map((message) => String(message.id)));
+        const uniqueOlder = olderMessages.filter(
+          (message) => !existingIds.has(String(message.id)),
+        );
+        return { ...prev, [chatKey]: [...uniqueOlder, ...existing] };
+      });
+      setMessagePaginationByChat((prev) => ({
+        ...prev,
+        [chatKey]: payload?.pagination || { hasMore: false },
+      }));
+
+      requestAnimationFrame(() => {
+        if (chatBoxRef.current) {
+          chatBoxRef.current.scrollTop += chatBoxRef.current.scrollHeight - previousHeight;
+        }
+      });
+    } catch (error) {
+      setSendError(normalizeChatError(error));
+    } finally {
+      setLoadingOlderMessages(false);
+    }
+  }, [chatBoxRef, filterBlockedMessages, loadingOlderMessages, messagePaginationByChat, selectedChat]);
 
   const fetchChatData = useCallback(async () => {
     setLoading(true);
@@ -993,10 +1115,25 @@ export default function ChatSystem({ standalone = false }) {
         );
 
         if (buddy) {
+          const directConversation = otherConversations.find((conversation) =>
+            Array.isArray(conversation?.participants) &&
+            conversation.participants.some((participant) =>
+              String(getBuddySendId(participant)) === String(getBuddySendId(buddy)) ||
+              String(getBuddyEmail(participant)).toLowerCase() === String(getBuddyEmail(buddy)).toLowerCase(),
+            ),
+          );
           setSelectedChat({
             type: "person",
             source: "local",
             id: getBuddySendId(buddy),
+            chatId:
+              buddy?.directConversationId ||
+              buddy?.chat_id ||
+              buddy?.chatId ||
+              directConversation?.chat_id ||
+              directConversation?.chatId ||
+              directConversation?.id ||
+              null,
             title: getBuddyName(buddy),
             subtitle: getBuddyEmail(buddy),
             imageUrl: getImageUrl(buddy),
@@ -1146,6 +1283,7 @@ export default function ChatSystem({ standalone = false }) {
   const openGroupDialog = () => {
     setGroupTitle("");
     setGroupUserIds([]);
+    setGroupSearch("");
     setGroupError("");
     setGroupDialogOpen(true);
   };
@@ -1191,6 +1329,20 @@ export default function ChatSystem({ standalone = false }) {
       setCreatingGroup(false);
     }
   };
+
+  const groupMembers = useMemo(
+    () => visibleBuddies.filter((buddy) => {
+      const search = groupSearch.trim().toLowerCase();
+      if (!search) return true;
+      return `${getBuddyName(buddy)} ${getBuddyEmail(buddy)}`.toLowerCase().includes(search);
+    }),
+    [groupSearch, visibleBuddies],
+  );
+
+  const selectedGroupMembers = useMemo(
+    () => visibleBuddies.filter((buddy) => groupUserIds.includes(String(getBuddySendId(buddy)))),
+    [groupUserIds, visibleBuddies],
+  );
 
   const selectedGroupParticipantIds = useMemo(() => {
     const participants = Array.isArray(selectedChat?.raw?.participants)
@@ -1281,18 +1433,36 @@ export default function ChatSystem({ standalone = false }) {
     }
   };
 
-  const handleToggleGroupMute = (chatId) => {
+  const handleToggleChatMute = (chatId) => {
     if (!chatId) return;
 
-    setMutedGroupIds((prev) => {
+    setMutedChatIds((prev) => {
       const normalizedChatId = String(chatId);
       const next = prev.includes(normalizedChatId)
         ? prev.filter((id) => id !== normalizedChatId)
         : [...prev, normalizedChatId];
 
-      localStorage.setItem("chat_muted_group_ids", JSON.stringify(next));
+      localStorage.setItem("chat_muted_chat_ids", JSON.stringify(next));
       return next;
     });
+  };
+
+  const handleClearChat = async () => {
+    if (!selectedChat) return;
+    const chatId = selectedChat.chatId || selectedChat.id;
+    if (!window.confirm("Clear all messages from this chat for your account? Other participants will keep their history.")) return;
+
+    try {
+      await clearChatHistoryService(chatId);
+      setMessagesByChat((prev) => ({ ...prev, [selectedChat.id]: [] }));
+      setMessagePaginationByChat((prev) => ({
+        ...prev,
+        [selectedChat.id]: { hasMore: false, nextCursor: null },
+      }));
+      clearUnreadForChat({ chatId, userId: selectedChat.type === "person" ? selectedChat.id : "" });
+    } catch (error) {
+      setSendError(normalizeChatError(error));
+    }
   };
 
   const handleLeaveGroup = async (chatId) => {
@@ -1308,9 +1478,9 @@ export default function ChatSystem({ standalone = false }) {
         delete next[String(chatId)];
         return next;
       });
-      setMutedGroupIds((prev) => {
+      setMutedChatIds((prev) => {
         const next = prev.filter((id) => id !== String(chatId));
-        localStorage.setItem("chat_muted_group_ids", JSON.stringify(next));
+        localStorage.setItem("chat_muted_chat_ids", JSON.stringify(next));
         return next;
       });
       setSelectedChat(null);
@@ -1373,8 +1543,20 @@ export default function ChatSystem({ standalone = false }) {
     }
   };
 
+  const handleLogout = () => {
+    clearAuthToken();
+    sessionStorage.removeItem("user");
+    setActiveCall(null);
+    setIncomingCall(null);
+    navigate("/login", { replace: true });
+  };
+
   const handleStartConversationCall = async (type, options = {}) => {
     if ((!selectedChat && !options.chatId) || callStarting) return;
+    if (selectedChat?.type === "person" && blockedUserIds.includes(String(selectedChat.id))) {
+      setCallNotice("Unblock this user before starting a call.");
+      return;
+    }
 
     setCallStarting(true);
     setSendError("");
@@ -1486,10 +1668,10 @@ export default function ChatSystem({ standalone = false }) {
     const messagesResponse = await getChatMessagesService(chatId);
     setMessagesByChat((prev) => ({
       ...prev,
-      [selectedChat.id]: normalizeChatMessages(
+      [selectedChat.id]: filterBlockedMessages(normalizeChatMessages(
         messagesResponse.data?.data,
         selectedChat
-      ),
+      )),
     }));
   };
 
@@ -1497,6 +1679,10 @@ export default function ChatSystem({ standalone = false }) {
     const text = inputValue.trim();
     const filesToSend = pendingFiles;
     if ((!text && filesToSend.length === 0) || !selectedChat || sending) return;
+    if (selectedChat.type === "person" && blockedUserIds.includes(String(selectedChat.id))) {
+      setSendError("Unblock this user before sending messages.");
+      return;
+    }
     const mentionedUsers = uniqueUsersByIdentity(selectedMentionableUsers)
       .filter((buddy) => {
         const name = getBuddyName(buddy);
@@ -1591,6 +1777,11 @@ export default function ChatSystem({ standalone = false }) {
     }
   };
 
+  const handleEnterToSendChange = (enabled) => {
+    setEnterToSend(enabled);
+    localStorage.setItem("chat-enter-to-send", String(enabled));
+  };
+
   const handleReaction = async (messageId, emoji) => {
     if (!selectedChat || !messageId || !emoji) return;
     const targetMessage = (messagesByChat[selectedChat.id] || []).find(
@@ -1628,6 +1819,11 @@ export default function ChatSystem({ standalone = false }) {
 
   const handleEditMessage = (message) => {
     if (message?.direction !== "outbound") return;
+    const messageAge = Date.now() - new Date(message.sentAt).getTime();
+    if (!Number.isFinite(messageAge) || messageAge < 0 || messageAge > 10 * 60 * 1000) {
+      setSendError("Messages can only be edited within 10 minutes.");
+      return;
+    }
     setReplyToMessage(null);
     setEditingMessage(message);
     setInputValue(message.text || "");
@@ -1668,6 +1864,91 @@ export default function ChatSystem({ standalone = false }) {
     }
   };
 
+  const handleDeleteMessages = async (messages = []) => {
+    const messageList = Array.isArray(messages)
+      ? messages
+      : messages && typeof messages === "object"
+        ? [messages]
+        : [];
+
+    if (!selectedChat || messageList.length === 0) return;
+    const chatId = selectedChat.type === "channel" ? selectedChat.id : selectedChat.chatId;
+    // Message IDs can come from REST, realtime events, or optimistic state.
+    // Keep them as strings so the request and local state use the same key.
+    const messageIds = messageList
+      .map((message) => message?.id)
+      .filter((messageId) => messageId !== null && messageId !== undefined && messageId !== "")
+      .map(String);
+    if (!chatId || messageIds.length === 0) return;
+    if (!window.confirm(`Delete ${messageIds.length === 1 ? "this message" : `${messageIds.length} messages`}?`)) return;
+
+    try {
+      const responses = await Promise.all(
+        messageIds.map((messageId) => deleteConversationMessageService(chatId, messageId)),
+      );
+      const deletedMessages = responses
+        .map((response) => normalizeRealtimeMessage(response.data?.data, {
+          ...selectedChat,
+          currentUserId,
+        }))
+        .filter(Boolean);
+      const deletedById = new Map(
+        deletedMessages.map((message) => [String(message.id), message]),
+      );
+
+      setMessagesByChat((prev) => ({
+        ...prev,
+        [selectedChat.id]: (prev[selectedChat.id] || []).map((message) =>
+          deletedById.get(String(message.id)) || message,
+        ),
+      }));
+    } catch (error) {
+      setSendError(normalizeChatError(error));
+    }
+  };
+
+  const handleBlockUser = async (message) => {
+    const userId = message?.authorId;
+    if (!userId) return;
+    const isBlocked = blockedUserIds.includes(String(userId));
+    if (!window.confirm(isBlocked
+      ? "Unblock this user?"
+      : "Block this user? You will no longer receive messages from them.")) return;
+
+    try {
+      setBlockedUserIds((prev) => {
+        const next = isBlocked
+          ? prev.filter((id) => id !== String(userId))
+          : [...prev, String(userId)];
+        localStorage.setItem("chat_blocked_user_ids", JSON.stringify(next));
+        return next;
+      });
+      if (!isBlocked) {
+        setMessagesByChat((prev) => Object.fromEntries(
+          Object.entries(prev).map(([chatKey, messages]) => [
+            chatKey,
+            messages.filter((item) => String(item.authorId) !== String(userId)),
+          ]),
+        ));
+      }
+      setSendError(isBlocked ? "User unblocked." : "User blocked.");
+    } catch (error) {
+      setSendError(normalizeChatError(error));
+    }
+  };
+
+  const handleCopyMessage = async (message) => {
+    const text = String(message?.text || "").trim();
+    if (!text) return;
+
+    try {
+      await navigator.clipboard.writeText(text);
+      setSendError("Message copied.");
+    } catch {
+      setSendError("Unable to copy message.");
+    }
+  };
+
   const handleCancelComposerMode = () => {
     setReplyToMessage(null);
     setEditingMessage(null);
@@ -1703,18 +1984,22 @@ export default function ChatSystem({ standalone = false }) {
       <Box
         sx={{
           height: standalone ? "100vh" : "calc(100vh - 48px)",
-          minHeight: standalone ? "100vh" : 620,
+          minHeight: standalone ? "100vh" : { xs: 0, md: 620 },
           display: "grid",
-          gridTemplateColumns: { xs: "1fr", md: "380px minmax(0, 1fr)" },
-          bgcolor: "#f3f5f8",
-          border: standalone ? "none" : "1px solid #dfe3ea",
-          borderRadius: standalone ? 0 : 2,
+          gridTemplateColumns: { xs: "1fr", sm: "320px minmax(0, 1fr)", md: "380px minmax(0, 1fr)" },
+          bgcolor: "background.default",
+          border: standalone ? "none" : "1px solid",
+          borderColor: "divider",
+          borderRadius: standalone ? 0 : 3,
+          boxShadow: standalone ? "none" : "0 14px 40px rgba(35,42,70,.10)",
           overflow: "hidden",
         }}
       >
       <ChatSidebar
         avatarUploading={avatarUploading}
         currentStatus={currentStatus}
+        enterToSend={enterToSend}
+        onEnterToSendChange={handleEnterToSendChange}
         filteredItems={filteredItems}
         loadError={loadError}
         loading={loading}
@@ -1744,19 +2029,29 @@ export default function ChatSystem({ standalone = false }) {
         availableChats={conversationItems}
         currentUser={currentUser}
         editingMessage={editingMessage}
+        enterToSend={enterToSend}
         currentMessages={currentMessages}
+        typingUser={typingUsersByChat[String(selectedChat?.chatId || selectedChat?.id)]}
+        onTyping={(typing) => callSocketRef.current?.emit("typing:update", { chatId: selectedChat?.chatId || selectedChat?.id, typing })}
+        hasOlderMessages={Boolean(messagePaginationByChat[selectedChat?.id]?.hasMore)}
+        loadingOlderMessages={loadingOlderMessages}
+        onLoadOlderMessages={loadOlderMessages}
         handleFileUpload={handleFileUpload}
         handleCancelComposerMode={handleCancelComposerMode}
         handleEditMessage={handleEditMessage}
         handleForwardMessage={handleForwardMessage}
         handlePinMessage={handlePinMessage}
+        handleDeleteMessages={handleDeleteMessages}
+        handleBlockUser={handleBlockUser}
+        blockedUserIds={blockedUserIds}
+        handleCopyMessage={handleCopyMessage}
         handleReaction={handleReaction}
         handleReplyToMessage={handleReplyToMessage}
         handleSend={handleSend}
         onEndActiveCall={handleEndActiveCall}
         onLeaveGroup={handleLeaveGroup}
         inputValue={inputValue}
-        mutedGroupIds={mutedGroupIds}
+        mutedGroupIds={mutedChatIds}
         mentionableUsers={selectedMentionableUsers}
         pendingFiles={pendingFiles}
         removePendingFile={removePendingFile}
@@ -1766,7 +2061,9 @@ export default function ChatSystem({ standalone = false }) {
         replyToMessage={replyToMessage}
         onStartConversationCall={handleStartConversationCall}
         onOpenAddMembers={openAddMembersDialog}
-        onToggleGroupMute={handleToggleGroupMute}
+        onToggleGroupMute={handleToggleChatMute}
+        onLogout={handleLogout}
+        onClearChat={handleClearChat}
         setInputValue={setInputValue}
         setSelectedChat={setSelectedChat}
         uploading={uploading}
@@ -1806,63 +2103,148 @@ export default function ChatSystem({ standalone = false }) {
         message={callNotice}
         anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
       />
-      <Dialog
+      <GroupCreationDialog
         open={groupDialogOpen}
         onClose={() => setGroupDialogOpen(false)}
+        onCreate={handleCreateGroup}
+        onSearchChange={setGroupSearch}
+        onSelectMember={toggleGroupUser}
+        onTitleChange={setGroupTitle}
+        members={groupMembers}
+        selectedMembers={selectedGroupMembers}
+        search={groupSearch}
+        title={groupTitle}
+        error={groupError}
+        creating={creatingGroup}
+      />
+      <AddMembersDialog
+        open={addMembersDialogOpen}
+        onClose={() => setAddMembersDialogOpen(false)}
+        onAdd={handleAddGroupMembers}
+        onSelect={toggleAddMemberUser}
+        members={addableGroupMembers}
+        selectedIds={addMemberUserIds}
+        error={addMembersError}
+        adding={addingMembers}
+      />
+      <Dialog
+        open={false}
+        onClose={() => setGroupDialogOpen(false)}
         fullWidth
-        maxWidth="xs"
+        maxWidth="sm"
+        PaperProps={{ sx: { borderRadius: 3, overflow: "hidden" } }}
       >
-        <DialogTitle>Create group</DialogTitle>
-        <DialogContent dividers>
+        <DialogTitle sx={{ pb: 1.5 }}>
+          <Box display="flex" alignItems="center" gap={1.25}>
+            <Avatar sx={{ bgcolor: "primary.main", width: 42, height: 42 }}>
+              <GroupIcon />
+            </Avatar>
+            <Box>
+              <Typography variant="h6" fontWeight={800}>New group</Typography>
+              <Typography variant="body2" color="text.secondary">
+                Add people and choose a group name
+              </Typography>
+            </Box>
+          </Box>
+        </DialogTitle>
+        <DialogContent dividers sx={{ px: { xs: 2, sm: 3 }, py: 2 }}>
           <TextField
             fullWidth
             autoFocus
             label="Group name"
-            margin="dense"
-            size="small"
+            placeholder="Enter a group name"
+            size="medium"
             value={groupTitle}
             onChange={(event) => setGroupTitle(event.target.value)}
+            inputProps={{ maxLength: 80 }}
+          />
+          <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 2, mb: 0.75, fontWeight: 700 }}>
+            Selected members {groupUserIds.length ? `(${groupUserIds.length})` : ""}
+          </Typography>
+          {selectedGroupMembers.length > 0 ? (
+            <Box display="flex" gap={0.75} flexWrap="wrap" sx={{ mb: 1.5 }}>
+              {selectedGroupMembers.map((buddy) => {
+                const userId = String(getBuddySendId(buddy));
+                return (
+                  <Chip
+                    key={userId}
+                    avatar={<Avatar src={getImageUrl(buddy)}>{getInitial(getBuddyName(buddy))}</Avatar>}
+                    label={getBuddyName(buddy)}
+                    onDelete={() => toggleGroupUser(userId)}
+                    sx={{ maxWidth: "100%" }}
+                  />
+                );
+              })}
+            </Box>
+          ) : (
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+              Select at least one person to start the group.
+            </Typography>
+          )}
+          <TextField
+            fullWidth
+            size="small"
+            placeholder="Search people"
+            value={groupSearch}
+            onChange={(event) => setGroupSearch(event.target.value)}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon fontSize="small" />
+                </InputAdornment>
+              ),
+            }}
           />
           {groupError && (
             <Alert severity="error" sx={{ mt: 1.5 }}>
               {groupError}
             </Alert>
           )}
-          <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 1.5 }}>
-            Members
-          </Typography>
-          <List dense sx={{ maxHeight: 300, overflow: "auto", mt: 0.5 }}>
-            {visibleBuddies.map((buddy) => {
+          <List sx={{ maxHeight: 310, overflow: "auto", mt: 1, p: 0 }}>
+            {groupMembers.map((buddy) => {
               const userId = String(getBuddySendId(buddy));
               const checked = groupUserIds.includes(userId);
 
               return (
-                <ListItemButton key={userId} onClick={() => toggleGroupUser(userId)}>
-                  <Checkbox edge="start" checked={checked} tabIndex={-1} disableRipple />
+                <ListItemButton
+                  key={userId}
+                  onClick={() => toggleGroupUser(userId)}
+                  sx={{ borderRadius: 2, mb: 0.25, px: 1, "&:hover": { bgcolor: "action.hover" } }}
+                >
+                  <Avatar src={getImageUrl(buddy)} sx={{ width: 42, height: 42, mr: 1.25 }}>
+                    {getInitial(getBuddyName(buddy))}
+                  </Avatar>
                   <ListItemText
                     primary={getBuddyName(buddy)}
                     secondary={getBuddyEmail(buddy)}
                     primaryTypographyProps={{ noWrap: true }}
                     secondaryTypographyProps={{ noWrap: true }}
                   />
+                  <Checkbox checked={checked} tabIndex={-1} disableRipple />
                 </ListItemButton>
               );
             })}
+            {groupMembers.length === 0 && (
+              <Typography color="text.secondary" variant="body2" sx={{ py: 3, textAlign: "center" }}>
+                No people found.
+              </Typography>
+            )}
           </List>
         </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setGroupDialogOpen(false)}>Cancel</Button>
+        <DialogActions sx={{ px: { xs: 2, sm: 3 }, py: 1.5 }}>
+          <Button onClick={() => setGroupDialogOpen(false)} sx={{ textTransform: "none" }}>Cancel</Button>
           <Button
             variant="contained"
             onClick={handleCreateGroup}
-            disabled={creatingGroup}
+            disabled={creatingGroup || groupUserIds.length === 0}
+            sx={{ borderRadius: 2, textTransform: "none", px: 2.5, fontWeight: 700 }}
           >
-            {creatingGroup ? "Creating" : "Create"}
+            {creatingGroup ? "Creating…" : "Create group"}
           </Button>
         </DialogActions>
       </Dialog>
       <Dialog
-        open={addMembersDialogOpen}
+        open={false}
         onClose={() => setAddMembersDialogOpen(false)}
         fullWidth
         maxWidth="xs"

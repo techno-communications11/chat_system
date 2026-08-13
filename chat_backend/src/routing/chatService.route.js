@@ -1,49 +1,31 @@
 import express from "express";
+import { registerUser, loginUser } from "../controllers/chat/auth.controllers.js";
 import {
-  addConversationMembers,
-  addMessageReaction,
-  createChannel,
-  createRole,
-  endConversationCall,
-  getChatMe,
-  getChatUser,
-  getConversationMessages,
-  joinChannel,
-  leaveConversation,
-  listChannels,
-  listGroups,
-  listChatAuditLogs,
-  listChatConversations,
-  listChatUsers,
-  listRoles,
-  loginUser,
-  markConversationRead,
-  openDirectConversation,
-  openGroupConversation,
-  patchConversationMessage,
-  patchConversationMessagePin,
-  postBroadcastMessage,
-  postConversationMessage,
-  postDirectMessage,
-  postMultiUserMessage,
-  removeConversationMember,
-  removeMessageReaction,
-  registerUser,
-  searchMessages,
-  startConversationCall,
-  respondConversationCall,
-  updateChatStatus,
-  updateChatAvatarController,
-  updateConversation,
-  uploadConversationFile,
-} from "../controllers/chatService.controllers.js";
+  getChatMe, updateChatStatus, updateChatAvatarController,
+  listChatUsers, getChatUser, listRoles, createRole,
+} from "../controllers/chat/identity.controllers.js";
+import {
+  listChatConversations, listGroups, listChannels, createChannel,
+  joinChannel, openDirectConversation, openGroupConversation,
+  updateConversation, addConversationMembers, removeConversationMember,
+  leaveConversation, markConversationRead, clearConversationHistory,
+} from "../controllers/chat/conversation.controllers.js";
+import {
+  getConversationMessages, searchMessages, postConversationMessage,
+  patchConversationMessage, deleteConversationMessage, patchConversationMessagePin, postDirectMessage,
+  postMultiUserMessage, postBroadcastMessage, uploadConversationFile,
+  addMessageReaction, removeMessageReaction,
+} from "../controllers/chat/message.controllers.js";
+import { startConversationCall, getActiveConversationCalls, respondConversationCall, endConversationCall } from "../controllers/chat/call.controllers.js";
+import { listChatAuditLogs } from "../controllers/chat/audit.controllers.js";
 import checkAuth from "../middlewares/check_auth.middleware.js";
 import { requireLegacyAuthEnabled } from "../middlewares/platformSecurity.middleware.js";
+import { authRateLimit } from "../middlewares/platformSecurity.middleware.js";
 
 const chatServiceRouter = express.Router();
 
-chatServiceRouter.post("/auth/register", requireLegacyAuthEnabled, registerUser);
-chatServiceRouter.post("/auth/login", requireLegacyAuthEnabled, loginUser);
+chatServiceRouter.post("/auth/register", authRateLimit, requireLegacyAuthEnabled, registerUser);
+chatServiceRouter.post("/auth/login", authRateLimit, requireLegacyAuthEnabled, loginUser);
 
 chatServiceRouter.get("/me", checkAuth, getChatMe);
 chatServiceRouter.patch("/me/status", checkAuth, updateChatStatus);
@@ -83,6 +65,11 @@ chatServiceRouter.post(
   checkAuth,
   markConversationRead
 );
+chatServiceRouter.delete(
+  "/conversations/:chatId/messages",
+  checkAuth,
+  clearConversationHistory,
+);
 chatServiceRouter.get(
   "/conversations/:chatId/messages",
   checkAuth,
@@ -97,6 +84,11 @@ chatServiceRouter.patch(
   "/conversations/:chatId/messages/:messageId",
   checkAuth,
   patchConversationMessage
+);
+chatServiceRouter.delete(
+  "/conversations/:chatId/messages/:messageId",
+  checkAuth,
+  deleteConversationMessage,
 );
 chatServiceRouter.patch(
   "/conversations/:chatId/messages/:messageId/pin",
@@ -115,6 +107,11 @@ chatServiceRouter.post(
   "/conversations/:chatId/calls",
   checkAuth,
   startConversationCall
+);
+chatServiceRouter.get(
+  "/calls/active",
+  checkAuth,
+  getActiveConversationCalls,
 );
 chatServiceRouter.post(
   "/conversations/:chatId/calls/:callId/end",

@@ -9,7 +9,13 @@ const getAudioContext = () => {
   return sharedContext;
 };
 
-const playNote = (context, frequency, startOffset, duration, gainValue = 0.055) => {
+const playNote = (
+  context,
+  frequency,
+  startOffset,
+  duration,
+  gainValue = 0.055,
+) => {
   const oscillator = context.createOscillator();
   const gain = context.createGain();
   const start = context.currentTime + startOffset;
@@ -39,7 +45,9 @@ const playPattern = (context, mode) => {
 export function useCallTone(mode) {
   useEffect(() => {
     const unlock = () => {
-      getAudioContext()?.resume().catch(() => {});
+      getAudioContext()
+        ?.resume()
+        .catch(() => {});
     };
     window.addEventListener("pointerdown", unlock, { once: true });
     window.addEventListener("keydown", unlock, { once: true });
@@ -59,7 +67,10 @@ export function useCallTone(mode) {
       if (!stopped && context.state === "running") playPattern(context, mode);
     };
     play();
-    const interval = window.setInterval(play, mode === "incoming" ? 2400 : 3000);
+    const interval = window.setInterval(
+      play,
+      mode === "incoming" ? 2400 : 3000,
+    );
     return () => {
       stopped = true;
       window.clearInterval(interval);

@@ -15,10 +15,32 @@ import MicOffIcon from "@mui/icons-material/MicOff";
 import VideocamIcon from "@mui/icons-material/Videocam";
 import VideocamOffIcon from "@mui/icons-material/VideocamOff";
 
+const getIceServers = () => {
+  const stunUrls = String(
+    import.meta.env.VITE_CHAT_STUN_SERVER || "stun:stun.cloudflare.com:3478",
+  )
+    .split(",")
+    .map((url) => url.trim())
+    .filter(Boolean);
+  const turnUrls = String(import.meta.env.VITE_CHAT_TURN_URLS || "")
+    .split(",")
+    .map((url) => url.trim())
+    .filter(Boolean);
+
+  return [
+    { urls: stunUrls },
+    ...(turnUrls.length
+      ? [{
+          urls: turnUrls,
+          username: import.meta.env.VITE_CHAT_TURN_USERNAME,
+          credential: import.meta.env.VITE_CHAT_TURN_CREDENTIAL,
+        }]
+      : []),
+  ];
+};
+
 const createPeerConnection = () =>
-  new RTCPeerConnection({
-    iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
-  });
+  new RTCPeerConnection({ iceServers: getIceServers() });
 
 const getLocalMediaStream = async (constraints) => {
   if (navigator.mediaDevices?.getUserMedia) {
@@ -61,21 +83,34 @@ export default function InternalCallPanel({
 
   const isAccepted = activeCall?.status === "accepted";
   const isVideoCall = activeCall?.type === "video";
-  const isCaller = String(activeCall?.startedBy?.id) === String(currentUser?.id);
+  const currentIdentityId = String(
+    currentUser?.appUserId ||
+      currentUser?.app_user_id ||
+      currentUser?.userId ||
+      currentUser?.user_id ||
+      currentUser?.id ||
+      "",
+  );
+  const isCaller =
+    String(activeCall?.startedBy?.id) === currentIdentityId;
 
-  const emitSignal = useCallback((signal) => {
-    const socket = socketRef?.current;
-    if (!socket || !activeCall?.id || !activeCall?.chatId) return;
-    socket.emit("call:signal", {
-      chatId: String(activeCall.chatId),
-      callId: String(activeCall.id),
-      signal,
-    });
-  }, [activeCall?.chatId, activeCall?.id, socketRef]);
+  const emitSignal = useCallback(
+    (signal) => {
+      const socket = socketRef?.current;
+      if (!socket || !activeCall?.id || !activeCall?.chatId) return;
+      socket.emit("call:signal", {
+        chatId: String(activeCall.chatId),
+        callId: String(activeCall.id),
+        signal,
+      });
+    },
+    [activeCall?.chatId, activeCall?.id, socketRef],
+  );
 
   const makeOffer = useCallback(async () => {
     const peer = peerRef.current;
-    if (!peer || peer.signalingState !== "stable" || madeOfferRef.current) return;
+    if (!peer || peer.signalingState !== "stable" || madeOfferRef.current)
+      return;
     madeOfferRef.current = true;
     const offer = await peer.createOffer();
     await peer.setLocalDescription(offer);
@@ -95,6 +130,8 @@ export default function InternalCallPanel({
     const peer = createPeerConnection();
     peerRef.current = peer;
     madeOfferRef.current = false;
+    const pendingCandidates = [];
+    let restartTimer;
 
     peer.onicecandidate = (event) => {
       if (event.candidate) {
@@ -115,32 +152,65 @@ export default function InternalCallPanel({
 
     peer.onconnectionstatechange = () => {
       if (peer.connectionState === "connected") setStatus("Connected");
-      if (["disconnected", "failed"].includes(peer.connectionState)) setStatus("Reconnecting");
+      if (["disconnected", "failed"].includes(peer.connectionState)) {
+        setStatus("Reconnecting");
+        if (isCaller && peer.connectionState === "failed") {
+          peer.restartIce();
+          madeOfferRef.current = false;
+          clearTimeout(restartTimer);
+          restartTimer = setTimeout(() => {
+            makeOffer().catch((offerError) => setError(offerError.message));
+          }, 500);
+        }
+      }
       if (peer.connectionState === "closed") setStatus("Call closed");
     };
 
     const onPeerJoined = async (payload) => {
       if (String(payload.callId) !== String(activeCall.id)) return;
-      if (isCaller) await makeOffer().catch((offerError) => setError(offerError.message));
+      if (isCaller) {
+        // A refreshed browser creates a new peer connection. Allow the
+        // caller to create a fresh offer instead of reusing the old one.
+        madeOfferRef.current = false;
+        await makeOffer().catch((offerError) => setError(offerError.message));
+      }
     };
 
     const onSignal = async (payload) => {
       if (String(payload.callId) !== String(activeCall.id)) return;
-      if (String(payload.fromUserId) === String(currentUser?.id)) return;
+      if (String(payload.fromUserId) === currentIdentityId) return;
       const signal = payload.signal || {};
 
       try {
+        const flushPendingCandidates = async () => {
+          while (pendingCandidates.length) {
+            await peer.addIceCandidate(
+              new RTCIceCandidate(pendingCandidates.shift()),
+            );
+          }
+        };
+
         if (signal.type === "offer") {
-          await peer.setRemoteDescription(new RTCSessionDescription(signal.description));
+          await peer.setRemoteDescription(
+            new RTCSessionDescription(signal.description),
+          );
           madeOfferRef.current = false;
           const answer = await peer.createAnswer();
           await peer.setLocalDescription(answer);
           emitSignal({ type: "answer", description: answer });
+          await flushPendingCandidates();
           setStatus("Connecting");
         } else if (signal.type === "answer") {
-          await peer.setRemoteDescription(new RTCSessionDescription(signal.description));
+          await peer.setRemoteDescription(
+            new RTCSessionDescription(signal.description),
+          );
+          await flushPendingCandidates();
         } else if (signal.type === "ice-candidate" && signal.candidate) {
-          await peer.addIceCandidate(new RTCIceCandidate(signal.candidate));
+          if (!peer.remoteDescription) {
+            pendingCandidates.push(signal.candidate);
+          } else {
+            await peer.addIceCandidate(new RTCIceCandidate(signal.candidate));
+          }
         }
       } catch (signalError) {
         setError(signalError.message || "Call connection failed");
@@ -148,7 +218,28 @@ export default function InternalCallPanel({
     };
 
     const onPeerLeft = (payload) => {
-      if (String(payload.callId) === String(activeCall.id)) setStatus("The other participant left");
+      if (String(payload.callId) === String(activeCall.id)) {
+        madeOfferRef.current = false;
+        setStatus("The other participant left");
+      }
+    };
+
+    const joinCall = () => {
+      if (cancelled || !socket?.connected) return;
+      if (isCaller) madeOfferRef.current = false;
+      setStatus("Reconnecting");
+      socket.emit(
+        "join:call",
+        {
+          chatId: String(activeCall.chatId),
+          callId: String(activeCall.id),
+        },
+        (response) => {
+          if (response?.ok && isCaller && response.peers?.length) {
+            makeOffer().catch((offerError) => setError(offerError.message));
+          }
+        },
+      );
     };
 
     const start = async () => {
@@ -170,21 +261,13 @@ export default function InternalCallPanel({
         socket?.on("call:peer-joined", onPeerJoined);
         socket?.on("call:signal", onSignal);
         socket?.on("call:peer-left", onPeerLeft);
+        socket?.on("connect", joinCall);
         setStatus("Waiting for participant");
-        socket?.emit(
-          "join:call",
-          {
-            chatId: String(activeCall.chatId),
-            callId: String(activeCall.id),
-          },
-          (response) => {
-            if (response?.ok && isCaller && response.peers?.length) {
-              makeOffer().catch((offerError) => setError(offerError.message));
-            }
-          },
-        );
+        joinCall();
       } catch (mediaError) {
-        setError(mediaError.message || "Camera or microphone permission was denied");
+        setError(
+          mediaError.message || "Camera or microphone permission was denied",
+        );
       }
     };
 
@@ -192,9 +275,11 @@ export default function InternalCallPanel({
 
     return () => {
       cancelled = true;
+      clearTimeout(restartTimer);
       socket?.off("call:peer-joined", onPeerJoined);
       socket?.off("call:signal", onSignal);
       socket?.off("call:peer-left", onPeerLeft);
+      socket?.off("connect", joinCall);
       socket?.emit("leave:call", {
         chatId: String(activeCall.chatId),
         callId: String(activeCall.id),
@@ -208,7 +293,7 @@ export default function InternalCallPanel({
   }, [
     activeCall?.chatId,
     activeCall?.id,
-    currentUser?.id,
+    currentIdentityId,
     emitSignal,
     isAccepted,
     isCaller,
@@ -218,11 +303,14 @@ export default function InternalCallPanel({
   ]);
 
   const toggleTrack = (kind) => {
-    const tracks = kind === "audio"
-      ? localStreamRef.current?.getAudioTracks()
-      : localStreamRef.current?.getVideoTracks();
+    const tracks =
+      kind === "audio"
+        ? localStreamRef.current?.getAudioTracks()
+        : localStreamRef.current?.getVideoTracks();
     const nextEnabled = !tracks?.[0]?.enabled;
-    tracks?.forEach((track) => { track.enabled = nextEnabled; });
+    tracks?.forEach((track) => {
+      track.enabled = nextEnabled;
+    });
     if (kind === "audio") setMicEnabled(nextEnabled);
     if (kind === "video") setCameraEnabled(nextEnabled);
   };
@@ -231,8 +319,15 @@ export default function InternalCallPanel({
 
   if (!isAccepted) {
     return (
-      <Box px={2.5} py={1} display="flex" alignItems="center" justifyContent="space-between" gap={1}
-        sx={{ bgcolor: "#fff7ed", borderBottom: "1px solid #fed7aa" }}>
+      <Box
+        px={2.5}
+        py={1}
+        display="flex"
+        alignItems="center"
+        justifyContent="space-between"
+        gap={1}
+        sx={{ bgcolor: "#fff7ed", borderBottom: "1px solid #fed7aa" }}
+      >
         <Box minWidth={0}>
           <Typography fontSize={13} fontWeight={800} color="#9a3412" noWrap>
             Calling - waiting for an answer
@@ -241,7 +336,9 @@ export default function InternalCallPanel({
             Started by {activeCall.startedBy?.name || "someone"}
           </Typography>
         </Box>
-        <Button size="small" color="warning" onClick={onEnd}>Cancel</Button>
+        <Button size="small" color="warning" onClick={onEnd}>
+          Cancel
+        </Button>
       </Box>
     );
   }
@@ -258,19 +355,72 @@ export default function InternalCallPanel({
     >
       <audio ref={remoteAudioRef} autoPlay playsInline />
       {isVideoCall ? (
-        <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 150px" }, gap: 1, p: 1 }}>
-          <Box sx={{ position: "relative", bgcolor: "#111827", height: modal ? { xs: 260, sm: 420 } : { xs: 190, sm: 220 }, borderRadius: 1, overflow: "hidden" }}>
-            <video ref={remoteVideoRef} autoPlay playsInline style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-            <Typography sx={{ position: "absolute", left: 10, top: 8, fontSize: 12, bgcolor: "rgba(0,0,0,.55)", px: 1, py: 0.25, borderRadius: 1 }}>
+        <Box
+          sx={{
+            display: "grid",
+            gridTemplateColumns: { xs: "1fr", sm: "1fr 150px" },
+            gap: 1,
+            p: 1,
+          }}
+        >
+          <Box
+            sx={{
+              position: "relative",
+              bgcolor: "#111827",
+              height: modal ? { xs: 260, sm: 420 } : { xs: 190, sm: 220 },
+              borderRadius: 1,
+              overflow: "hidden",
+            }}
+          >
+            <video
+              ref={remoteVideoRef}
+              autoPlay
+              playsInline
+              style={{ width: "100%", height: "100%", objectFit: "cover" }}
+            />
+            <Typography
+              sx={{
+                position: "absolute",
+                left: 10,
+                top: 8,
+                fontSize: 12,
+                bgcolor: "rgba(0,0,0,.55)",
+                px: 1,
+                py: 0.25,
+                borderRadius: 1,
+              }}
+            >
               {status || "Connecting"}
             </Typography>
           </Box>
-          <Box sx={{ bgcolor: "#111827", height: modal ? { xs: 130, sm: 420 } : { xs: 110, sm: 220 }, borderRadius: 1, overflow: "hidden" }}>
-            <video ref={localVideoRef} autoPlay muted playsInline style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+          <Box
+            sx={{
+              bgcolor: "#111827",
+              height: modal ? { xs: 130, sm: 420 } : { xs: 110, sm: 220 },
+              borderRadius: 1,
+              overflow: "hidden",
+            }}
+          >
+            <video
+              ref={localVideoRef}
+              autoPlay
+              muted
+              playsInline
+              style={{ width: "100%", height: "100%", objectFit: "cover" }}
+            />
           </Box>
         </Box>
       ) : (
-        <Box sx={{ p: 1.5, minHeight: 96, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 2 }}>
+        <Box
+          sx={{
+            p: 1.5,
+            minHeight: 96,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 2,
+          }}
+        >
           <Stack direction="row" spacing={1.5} alignItems="center" minWidth={0}>
             <AccountCircleIcon sx={{ fontSize: 56, color: "#93c5fd" }} />
             <Box minWidth={0}>
@@ -284,8 +434,18 @@ export default function InternalCallPanel({
           </Stack>
         </Box>
       )}
-      {error && <Alert severity="error" sx={{ mx: 1.5, mb: 1 }}>{error}</Alert>}
-      <Stack direction="row" spacing={1} alignItems="center" justifyContent="center" sx={{ pb: 1.5 }}>
+      {error && (
+        <Alert severity="error" sx={{ mx: 1.5, mb: 1 }}>
+          {error}
+        </Alert>
+      )}
+      <Stack
+        direction="row"
+        spacing={1}
+        alignItems="center"
+        justifyContent="center"
+        sx={{ pb: 1.5 }}
+      >
         <Tooltip title={micEnabled ? "Mute microphone" : "Unmute microphone"}>
           <IconButton color="inherit" onClick={() => toggleTrack("audio")}>
             {micEnabled ? <MicIcon /> : <MicOffIcon />}
@@ -298,7 +458,12 @@ export default function InternalCallPanel({
             </IconButton>
           </Tooltip>
         )}
-        <Button variant="contained" color="error" startIcon={<CallEndIcon />} onClick={onEnd}>
+        <Button
+          variant="contained"
+          color="error"
+          startIcon={<CallEndIcon />}
+          onClick={onEnd}
+        >
           End
         </Button>
       </Stack>

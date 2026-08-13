@@ -27,15 +27,23 @@ import {
 function PresenceAvatar({ item, title, isChannel }) {
   const availability = getAvailability(item);
   const isDirect = isDirectConversation(item, isChannel);
+  const participants = Array.isArray(item?.participants) ? item.participants : [];
+  const imageUrl =
+    getImageUrl(item) ||
+    getImageUrl(item?.user) ||
+    getImageUrl(item?.profile) ||
+    getImageUrl(item?.participant) ||
+    getImageUrl(item?.raw) ||
+    getImageUrl(participants[0]);
 
   if (!isDirect) {
     return (
       <Avatar
-        src={getImageUrl(item)}
+        src={imageUrl}
         sx={{
           width: 42,
           height: 42,
-          bgcolor: "#f0e8f7",
+          bgcolor: "var(--chat-soft)",
           color: "#6F2DA8",
           fontWeight: 800,
         }}
@@ -62,11 +70,11 @@ function PresenceAvatar({ item, title, isChannel }) {
         }}
       >
         <Avatar
-          src={getImageUrl(item)}
+          src={imageUrl}
           sx={{
             width: 42,
             height: 42,
-            bgcolor: "#e7f0ff",
+          bgcolor: "var(--chat-blue-soft)",
             color: "#215db0",
             fontWeight: 800,
           }}
@@ -108,12 +116,12 @@ export default function ConversationListItem({
         mb: 0.25,
         cursor: disabled ? "not-allowed" : "pointer",
         borderRadius: 1,
-        bgcolor: selected ? "#f2e9f8" : "transparent",
+          bgcolor: selected ? "action.selected" : "transparent",
         opacity: disabled ? 0.58 : 1,
         transition: "background-color 120ms ease, border-color 120ms ease",
         borderLeft: selected ? "3px solid #6F2DA8" : "3px solid transparent",
         "&:hover": {
-          bgcolor: disabled ? "transparent" : selected ? "#f2e9f8" : "#f7f8fa",
+          bgcolor: disabled ? "transparent" : selected ? "action.selected" : "action.hover",
         },
       }}
     >

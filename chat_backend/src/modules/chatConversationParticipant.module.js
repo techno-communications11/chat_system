@@ -26,6 +26,10 @@ const ChatConversationParticipant = sequelize.define(
       type: DataTypes.DATE,
       allowNull: true,
     },
+    clearedAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
   },
   {
     tableName: "chat_conversation_participants",
@@ -35,6 +39,7 @@ const ChatConversationParticipant = sequelize.define(
         unique: true,
         fields: ["conversationId", "chatIdentityId"],
       },
+      { fields: ["chatIdentityId", "conversationId"] },
     ],
   },
 );

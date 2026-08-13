@@ -4,6 +4,7 @@ import {
   Box,
   Button,
   Chip,
+  Checkbox,
   CircularProgress,
   Divider,
   IconButton,
@@ -22,13 +23,13 @@ import {
   Typography,
 } from "@mui/material";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
-import AlternateEmailIcon from "@mui/icons-material/AlternateEmail";
 import AttachFileIcon from "@mui/icons-material/AttachFile";
 import CloseIcon from "@mui/icons-material/Close";
 import CallIcon from "@mui/icons-material/Call";
 import DoneIcon from "@mui/icons-material/Done";
 import DoneAllIcon from "@mui/icons-material/DoneAll";
-import CodeIcon from "@mui/icons-material/Code";
+import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
+import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import EditIcon from "@mui/icons-material/Edit";
 import EmojiEmotionsIcon from "@mui/icons-material/EmojiEmotions";
 import ForwardIcon from "@mui/icons-material/Forward";
@@ -42,7 +43,12 @@ import PushPinIcon from "@mui/icons-material/PushPin";
 import ReplyIcon from "@mui/icons-material/Reply";
 import SearchIcon from "@mui/icons-material/Search";
 import SendIcon from "@mui/icons-material/Send";
+import BlockIcon from "@mui/icons-material/Block";
+import NotificationsActiveIcon from "@mui/icons-material/NotificationsActive";
+import NotificationsOffIcon from "@mui/icons-material/NotificationsOff";
+import DeleteSweepIcon from "@mui/icons-material/DeleteSweep";
 import VideoCallIcon from "@mui/icons-material/VideoCall";
+import { REACTION_OPTIONS } from "../utils/constants.js";
 import {
   getAvailability,
   getBuddyEmail,
@@ -68,13 +74,18 @@ import {
   ToolBtn,
 } from "./chatWindow/ChatWindowPanels";
 import InternalCallPanel from "./calls/InternalCallPanel";
+import EmojiPicker from "./chatWindow/EmojiPicker";
+import MessageActions from "./chatWindow/MessageActions";
+import MessageRowComponent from "./chatWindow/MessageRow";
+import SidebarItem from "./chatWindow/SidebarItem";
+import ConversationMediaDialog from "./chatWindow/ConversationMediaDialog";
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
-const BRAND = "#6F2DA8";
-const BRAND_DARK = "#5d238f";
-const BRAND_SOFT = "#ede9f8";
-const BRAND_TEXT = "#4a1e72";
-const SIDEBAR_BG = "#1a0a2e";
+const BRAND = "#6750E8";
+const BRAND_DARK = "#4F39C6";
+const BRAND_SOFT = "var(--chat-soft)";
+const BRAND_TEXT = "var(--chat-brand-text)";
+const SIDEBAR_BG = "#19152f";
 
 // ─── Sidebar ──────────────────────────────────────────────────────────────────
 function Sidebar({ selectedChat, setSelectedChat, chats = [] }) {
@@ -121,7 +132,8 @@ function Sidebar({ selectedChat, setSelectedChat, chats = [] }) {
   );
 }
 
-function SidebarItem({ chat, active, onClick }) {
+/* Legacy sidebar item moved to chatWindow/SidebarItem.jsx.
+function LegacySidebarItem({ chat, active, onClick }) {
   const availability = getAvailability(chat.raw);
   const isChannel = chat.type === "channel";
 
@@ -214,32 +226,11 @@ function SidebarItem({ chat, active, onClick }) {
     </Box>
   );
 }
+*/
 
-// ─── Reaction emoji list ──────────────────────────────────────────────────────
-const REACTION_OPTIONS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
 
-const EMOJI_OPTIONS = [
-  "😀",
-  "😁",
-  "😂",
-  "😊",
-  "😍",
-  "😎",
-  "😢",
-  "😡",
-  "👍",
-  "👎",
-  "👏",
-  "🙏",
-  "💪",
-  "🎉",
-  "🔥",
-  "❤️",
-  "💯",
-  "✅",
-  "⭐",
-  "🚀",
-];
+
+
 
 const formatFileSize = (bytes) => {
   const size = Number(bytes);
@@ -404,13 +395,18 @@ function MessageText({ message, mentionableUsers }) {
 }
 
 // ─── Message row (Slack-style) ────────────────────────────────────────────────
-function MessageRow({
+function MessageRowLegacy({
   message,
   currentUser,
   mentionableUsers = [],
   onEdit,
   onForward,
   onPin,
+  onDelete,
+  onCopy,
+  onSelect,
+  selected = false,
+  selectionMode = false,
   onReact,
   onReply,
   showAvatar = true,
@@ -421,7 +417,8 @@ function MessageRow({
   const dragStartXRef = useRef(null);
   const dragStartYRef = useRef(null);
   const isMe = message.direction === "outbound";
-  const actionsOpen = Boolean(actionAnchorEl);
+  const messageAge = Date.now() - new Date(message.sentAt).getTime();
+  const canEdit = isMe && Number.isFinite(messageAge) && messageAge >= 0 && messageAge <= 10 * 60 * 1000;
 
   const handleReact = (emoji) => {
     if (isMe) return;
@@ -456,25 +453,13 @@ function MessageRow({
     setActionAnchorEl(null);
   };
 
-  const replyToMessage = () => {
-    onReply?.(message);
-    closeActions();
-  };
-
-  const editMessage = () => {
-    onEdit?.(message);
-    closeActions();
-  };
-
-  const forwardMessage = () => {
-    onForward?.(message);
-    closeActions();
-  };
-
-  const pinMessage = () => {
-    onPin?.(message);
-    closeActions();
-  };
+  const replyToMessage = () => { onReply?.(message); closeActions(); };
+  const editMessage = () => { onEdit?.(message); closeActions(); };
+  const forwardMessage = () => { onForward?.(message); closeActions(); };
+  const pinMessage = () => { onPin?.(message); closeActions(); };
+  const selectMessage = () => { onSelect?.(message); closeActions(); };
+  const deleteMessage = () => { onDelete?.([message]); closeActions(); };
+  const copyMessage = () => { onCopy?.(message); closeActions(); };
 
   const avatarBg = BRAND_SOFT;
   const avatarColor = BRAND_TEXT;
@@ -511,7 +496,8 @@ function MessageRow({
         py: 0.625,
         borderRadius: "6px",
         position: "relative",
-        "&:hover": { bgcolor: "transparent" },
+        bgcolor: selected ? "action.selected" : "transparent",
+        "&:hover": { bgcolor: selected ? "action.selected" : "transparent" },
         mt: showAvatar ? 0.75 : 0,
       }}
     >
@@ -554,7 +540,9 @@ function MessageRow({
             px: 1.4,
             py: 0.9,
             borderRadius: isMe ? "10px 2px 10px 10px" : "2px 10px 10px 10px",
-            bgcolor: isMe ? "#dcf8c6" : "#ffffff",
+            bgcolor: (theme) => isMe
+              ? theme.palette.mode === "dark" ? "#31523a" : "#dcf8c6"
+              : theme.palette.background.paper,
             border: isMe ? "none" : "0.5px solid",
             borderColor: "divider",
             boxShadow: "0 1px 1px rgba(0,0,0,0.05)",
@@ -673,7 +661,7 @@ function MessageRow({
                     borderRadius: "7px",
                     px: 1,
                     py: 0.875,
-                    bgcolor: "#fafafa",
+                    bgcolor: "background.paper",
                   }}
                 >
                   <Box
@@ -748,14 +736,14 @@ function MessageRow({
                   borderRadius: "999px",
                   border: "0.5px solid",
                   borderColor: r.reacted ? "#a78bfa" : "divider",
-                  bgcolor: r.reacted ? "#f3e8ff" : "background.paper",
+            bgcolor: r.reacted ? "var(--chat-soft)" : "background.paper",
                   fontSize: 12,
                   color: r.reacted ? "#6d28d9" : "text.secondary",
                   cursor: "pointer",
                   transition: "all 0.12s",
                   "&:hover": {
                     borderColor: "#a78bfa",
-                    bgcolor: "#f3e8ff",
+                    bgcolor: "var(--chat-soft)",
                     color: "#6d28d9",
                   },
                 }}
@@ -768,8 +756,26 @@ function MessageRow({
         )}
       </Box>
 
+      <MessageActions
+        anchorEl={actionAnchorEl}
+        canEdit={canEdit}
+        isMe={isMe}
+        message={message}
+        onClose={closeActions}
+        onCopy={onCopy}
+        onDelete={onDelete}
+        onEdit={onEdit}
+        onForward={onForward}
+        onOpenPicker={(anchor) => setPickerAnchor(anchor)}
+        onPin={onPin}
+        onReact={(emoji) => handleReact(emoji)}
+        onReply={onReply}
+        onSelect={onSelect}
+        selected={selected}
+        selectionMode={selectionMode}
+      />
       <Popover
-        open={actionsOpen}
+        open={false}
         anchorEl={actionAnchorEl}
         onClose={closeActions}
         anchorOrigin={{
@@ -830,6 +836,16 @@ function MessageRow({
           </Box>
         )}
         <List dense disablePadding>
+          <ListItemButton onClick={copyMessage} sx={{ gap: 1.25, py: 1 }}>
+            <ContentCopyIcon sx={{ fontSize: 18, color: "text.secondary" }} />
+            <ListItemText primary="Copy" primaryTypographyProps={{ fontSize: 13.5, fontWeight: 500 }} />
+          </ListItemButton>
+          {isMe && (
+            <ListItemButton onClick={selectMessage} sx={{ gap: 1.25, py: 1 }}>
+              <Checkbox checked={selectionMode || selected} tabIndex={-1} disableRipple />
+              <ListItemText primary="Select" primaryTypographyProps={{ fontSize: 13.5, fontWeight: 500 }} />
+            </ListItemButton>
+          )}
           <ListItemButton onClick={replyToMessage} sx={{ gap: 1.25, py: 1 }}>
             <ReplyIcon sx={{ fontSize: 18, color: "text.secondary" }} />
             <ListItemText
@@ -837,7 +853,7 @@ function MessageRow({
               primaryTypographyProps={{ fontSize: 13.5, fontWeight: 500 }}
             />
           </ListItemButton>
-          {isMe && (
+          {canEdit && (
             <ListItemButton onClick={editMessage} sx={{ gap: 1.25, py: 1 }}>
               <EditIcon sx={{ fontSize: 18, color: "text.secondary" }} />
               <ListItemText
@@ -860,6 +876,12 @@ function MessageRow({
               primaryTypographyProps={{ fontSize: 13.5, fontWeight: 500 }}
             />
           </ListItemButton>
+          {isMe && (
+            <ListItemButton onClick={deleteMessage} sx={{ gap: 1.25, py: 1 }}>
+              <DeleteOutlineIcon sx={{ fontSize: 18, color: "error.main" }} />
+              <ListItemText primary="Delete" primaryTypographyProps={{ fontSize: 13.5, fontWeight: 600, color: "error.main" }} />
+            </ListItemButton>
+          )}
         </List>
       </Popover>
 
@@ -912,6 +934,8 @@ function MessageRow({
 // ─── Toolbar icon button ──────────────────────────────────────────────────────
 
 // ─── Main ChatWindow ──────────────────────────────────────────────────────────
+void MessageRowLegacy;
+
 export default function ChatWindow({
   activeCall,
   availableChats = [],
@@ -921,17 +945,25 @@ export default function ChatWindow({
   currentUser,
   callSocketRef,
   currentMessages,
+  hasOlderMessages = false,
+  loadingOlderMessages = false,
   editingMessage,
+  enterToSend = false,
   handleFileUpload,
   handleCancelComposerMode,
   handleEditMessage,
   handleForwardMessage,
   handlePinMessage,
+  handleDeleteMessages,
+  handleBlockUser,
+  blockedUserIds = [],
+  handleCopyMessage,
   handleReaction,
   handleReplyToMessage,
   handleSend,
   onEndActiveCall,
   onLeaveGroup,
+  onLoadOlderMessages,
   inputValue,
   mentionableUsers = [],
   mutedGroupIds = [],
@@ -944,11 +976,15 @@ export default function ChatWindow({
   onStartConversationCall,
   onOpenAddMembers,
   onToggleGroupMute,
+  onClearChat,
+  onTyping,
+  typingUser,
   setInputValue,
   setSelectedChat,
   uploading,
 }) {
   const [mentionAnchorEl, setMentionAnchorEl] = useState(null);
+  const [mentionQuery, setMentionQuery] = useState("");
   const [emojiAnchorEl, setEmojiAnchorEl] = useState(null);
   const [forwardMessage, setForwardMessage] = useState(null);
   const [searchAnchorEl, setSearchAnchorEl] = useState(null);
@@ -959,21 +995,49 @@ export default function ChatWindow({
   const [groupMenuAnchorEl, setGroupMenuAnchorEl] = useState(null);
   const [groupInfoOpen, setGroupInfoOpen] = useState(false);
   const [leaveConfirmOpen, setLeaveConfirmOpen] = useState(false);
+  const [mediaDialogOpen, setMediaDialogOpen] = useState(false);
+  const [selectedMessageIds, setSelectedMessageIds] = useState([]);
   const availability = selectedChat ? getAvailability(selectedChat.raw) : null;
   const groupMembers =
     selectedChat?.type === "channel" ? getGroupMembers(selectedChat) : [];
   const groupMenuOpen = Boolean(groupMenuAnchorEl);
-  const isGroupMuted =
-    selectedChat?.type === "channel" &&
-    mutedGroupIds.includes(String(selectedChat.id));
+  const isGroupMuted = Boolean(selectedChat && mutedGroupIds.includes(String(selectedChat.id)));
   const mentionPickerOpen = Boolean(mentionAnchorEl);
-  const emojiPickerOpen = Boolean(emojiAnchorEl);
+  const mentionCandidates = mentionableUsers.filter((user) => {
+    const query = mentionQuery.trim().toLowerCase();
+    if (!query) return true;
+    return [getBuddyName(user), getBuddyEmail(user)]
+      .some((value) => String(value || "").toLowerCase().includes(query));
+  });
   const messageSearchOpen = Boolean(searchAnchorEl);
   const canSend = Boolean(inputValue.trim()) || pendingFiles.length > 0;
   const pinnedMessages = currentMessages.filter(
     (message) => message.metadata?.pinned,
   );
   const latestPinnedMessage = pinnedMessages[pinnedMessages.length - 1] || null;
+  const directContactMessage = currentMessages.find((message) => message.direction !== "outbound") || {
+    authorId: selectedChat?.id,
+  };
+  const directContactId = String(directContactMessage.authorId || "");
+  const selectionMode = selectedMessageIds.length > 0;
+  const selectedMessages = currentMessages.filter((message) =>
+    selectedMessageIds.includes(String(message.id)),
+  );
+
+  const toggleMessageSelection = (message) => {
+    if (message?.direction !== "outbound") return;
+    const messageId = String(message.id);
+    setSelectedMessageIds((prev) => prev.includes(messageId)
+      ? prev.filter((id) => id !== messageId)
+      : [...prev, messageId]);
+  };
+
+  const clearMessageSelection = () => setSelectedMessageIds([]);
+
+  const deleteSelectedMessages = async () => {
+    await handleDeleteMessages?.(selectedMessages);
+    clearMessageSelection();
+  };
 
   const closeGroupMenu = () => {
     setGroupMenuAnchorEl(null);
@@ -996,13 +1060,21 @@ export default function ChatWindow({
 
   const insertMention = (user) => {
     const name = getBuddyName(user);
-    const spacer = inputValue && !inputValue.endsWith(" ") ? " " : "";
-    setInputValue(`${inputValue}${spacer}@${name} `);
+    setInputValue((currentValue) =>
+      currentValue.replace(/(?:^|\s)@[^\s@]*$/, (match) => {
+        const prefix = match.startsWith(" ") ? " " : "";
+        return `${prefix}@${name} `;
+      }),
+    );
+    setMentionQuery("");
     setMentionAnchorEl(null);
   };
 
   const insertEmoji = (emoji) => {
     setInputValue(`${inputValue}${emoji}`);
+  };
+
+  const closeEmojiPicker = () => {
     setEmojiAnchorEl(null);
   };
 
@@ -1087,19 +1159,20 @@ export default function ChatWindow({
               display: "flex",
               flexDirection: "column",
               minWidth: 0,
-              bgcolor: "#fff",
+              bgcolor: "background.paper",
+              backgroundImage: "linear-gradient(180deg, rgba(103,80,232,.035), transparent 75%)",
             }}
           >
             {/* ── Header ── */}
             <Box
-              px={2.5}
+              px={{ xs: 1.25, sm: 2.5 }}
               py={1.25}
               display="flex"
               alignItems="center"
               justifyContent="space-between"
-              bgcolor="#fff"
+              bgcolor="background.paper"
               borderBottom="0.5px solid"
-              sx={{ borderColor: "divider" }}
+              sx={{ borderColor: "divider", boxShadow: "0 1px 12px rgba(35,42,70,.04)", zIndex: 1 }}
             >
               <Box display="flex" alignItems="center" gap={1.25}>
                 <IconButton
@@ -1163,7 +1236,12 @@ export default function ChatWindow({
                 </Box>
               </Box>
 
-              <Stack direction="row" alignItems="center" spacing={0.5}>
+              <Stack
+                direction="row"
+                alignItems="center"
+                spacing={{ xs: 0.15, sm: 0.5 }}
+                sx={{ flexShrink: 0, maxWidth: { xs: "52%", sm: "none" }, overflow: "hidden" }}
+              >
                 <ToolBtn
                   title="Search messages"
                   icon={<SearchIcon sx={{ fontSize: 16 }} />}
@@ -1205,6 +1283,27 @@ export default function ChatWindow({
             </Box>
 
             {/* ── Messages ── */}
+            {selectionMode && (
+              <Box
+                display="flex"
+                alignItems="center"
+                justifyContent="space-between"
+                gap={1}
+                sx={{ px: 2, py: 0.75, bgcolor: "action.selected", borderBottom: "1px solid", borderColor: "divider" }}
+              >
+                <Typography variant="body2" fontWeight={700}>
+                  {selectedMessageIds.length} selected
+                </Typography>
+                <Box display="flex" gap={0.5}>
+                  <Button size="small" onClick={clearMessageSelection} sx={{ textTransform: "none" }}>
+                    Cancel
+                  </Button>
+                  <Button size="small" color="error" startIcon={<DeleteOutlineIcon />} onClick={deleteSelectedMessages} sx={{ textTransform: "none", fontWeight: 700 }}>
+                    Delete
+                  </Button>
+                </Box>
+              </Box>
+            )}
             <GroupActions
               anchorEl={groupMenuAnchorEl}
               currentUser={currentUser}
@@ -1218,11 +1317,64 @@ export default function ChatWindow({
               onCloseMenu={closeGroupMenu}
               onLeaveGroup={onLeaveGroup}
               onOpenInfo={openGroupInfo}
+              onOpenMedia={() => { setMediaDialogOpen(true); closeGroupMenu(); }}
+              onClearChat={() => { onClearChat?.(); closeGroupMenu(); }}
               onOpenLeaveConfirm={openLeaveConfirm}
               onToggleMute={toggleGroupMute}
               open={groupMenuOpen}
               selectedChat={selectedChat}
             />
+            {selectedChat.type !== "channel" && (
+              <Popover
+                open={groupMenuOpen}
+                anchorEl={groupMenuAnchorEl}
+                onClose={closeGroupMenu}
+                anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+                transformOrigin={{ vertical: "top", horizontal: "right" }}
+                PaperProps={{ sx: { minWidth: 190, borderRadius: 2 } }}
+              >
+                <List dense disablePadding>
+                  <ListItemButton
+                    onClick={() => { setMediaDialogOpen(true); closeGroupMenu(); }}
+                    sx={{ gap: 1.25, py: 1 }}
+                  >
+                    <AttachFileIcon sx={{ fontSize: 18, color: "text.secondary" }} />
+                    <ListItemText primary="Media, links & files" primaryTypographyProps={{ fontSize: 13.5, fontWeight: 600 }} />
+                  </ListItemButton>
+                  <ListItemButton onClick={() => { onClearChat?.(); closeGroupMenu(); }} sx={{ gap: 1.25, py: 1 }}>
+                    <DeleteSweepIcon sx={{ fontSize: 18, color: "error.main" }} />
+                    <ListItemText primary="Clear chat" primaryTypographyProps={{ fontSize: 13.5, fontWeight: 600, color: "error.main" }} />
+                  </ListItemButton>
+                  <ListItemButton
+                    onClick={() => {
+                      onToggleGroupMute?.(selectedChat.id);
+                      closeGroupMenu();
+                    }}
+                    sx={{ gap: 1.25, py: 1 }}
+                  >
+                    {isGroupMuted ? <NotificationsActiveIcon sx={{ fontSize: 18 }} /> : <NotificationsOffIcon sx={{ fontSize: 18 }} />}
+                    <ListItemText
+                      primary={isGroupMuted ? "Unmute notifications" : "Mute notifications"}
+                      primaryTypographyProps={{ fontSize: 13.5, fontWeight: 600 }}
+                    />
+                  </ListItemButton>
+                  <ListItemButton
+                    onClick={() => {
+                      handleBlockUser?.(directContactMessage);
+                      closeGroupMenu();
+                    }}
+                    disabled={!directContactId}
+                    sx={{ gap: 1.25, py: 1 }}
+                  >
+                    <BlockIcon sx={{ fontSize: 18, color: "error.main" }} />
+                    <ListItemText
+                      primary={blockedUserIds.includes(directContactId) ? "Unblock user" : "Block user"}
+                      primaryTypographyProps={{ fontSize: 13.5, fontWeight: 600, color: "error.main" }}
+                    />
+                  </ListItemButton>
+                </List>
+              </Popover>
+            )}
 
             <InternalCallPanel
               activeCall={activeCall}
@@ -1322,12 +1474,25 @@ export default function ChatWindow({
                 flex: 1,
                 minHeight: 0,
                 overflow: "auto",
-                px: 1.5,
-                py: 2,
-                bgcolor: "#fff",
+                px: { xs: 0.5, sm: 1.5 },
+                py: { xs: 1, sm: 2 },
+                bgcolor: "background.paper",
               }}
             >
-              {groupedMessages.length === 0 ? (
+              {hasOlderMessages && (
+                <Box display="flex" justifyContent="center" mb={1}>
+                  <Button
+                    size="small"
+                    onClick={onLoadOlderMessages}
+                    disabled={loadingOlderMessages}
+                    startIcon={loadingOlderMessages ? <CircularProgress size={14} /> : null}
+                    sx={{ textTransform: "none" }}
+                  >
+                    {loadingOlderMessages ? "Loading older messages…" : "Load older messages"}
+                  </Button>
+                </Box>
+              )}
+            {groupedMessages.length === 0 ? (
                 <ReadyToSendState selectedChat={selectedChat} />
               ) : (
                 groupedMessages.map((msg) => (
@@ -1342,7 +1507,7 @@ export default function ChatWindow({
                             px: 1.25,
                             py: 0.5,
                             borderRadius: "6px",
-                            bgcolor: "#f0f2f5",
+                            bgcolor: "action.hover",
                             boxShadow: "0 1px 1px rgba(0,0,0,0.05)",
                             whiteSpace: "nowrap",
                           }}
@@ -1351,7 +1516,7 @@ export default function ChatWindow({
                         </Typography>
                       </Box>
                     )}
-                    <MessageRow
+                    <MessageRowComponent
                       message={msg}
                       currentUser={currentUser}
                       mentionableUsers={
@@ -1360,6 +1525,11 @@ export default function ChatWindow({
                       onEdit={handleEditMessage}
                       onForward={openForwardDialog}
                       onPin={handlePinMessage}
+                      onDelete={handleDeleteMessages}
+                      onCopy={handleCopyMessage}
+                      onSelect={toggleMessageSelection}
+                      selected={selectedMessageIds.includes(String(msg.id))}
+                      selectionMode={selectionMode}
                       onReact={handleReaction}
                       onReply={handleReplyToMessage}
                       showAvatar={msg.showAvatar}
@@ -1374,8 +1544,14 @@ export default function ChatWindow({
               )}
             </Box>
 
+            <ConversationMediaDialog
+              open={mediaDialogOpen}
+              onClose={() => setMediaDialogOpen(false)}
+              messages={currentMessages}
+            />
+
             {/* ── Composer ── */}
-            <Box px={2} pb={2} pt={1} bgcolor="#fff">
+            <Box px={{ xs: 1, sm: 2 }} pb={{ xs: 1, sm: 2 }} pt={1} bgcolor="background.paper">
               {(replyToMessage || editingMessage) && (
                 <Box
                   display="flex"
@@ -1387,7 +1563,7 @@ export default function ChatWindow({
                     px: 1.25,
                     py: 0.875,
                     borderLeft: `3px solid ${editingMessage ? "#f59e0b" : BRAND}`,
-                    bgcolor: editingMessage ? "#fff7ed" : "#f8f5ff",
+                    bgcolor: editingMessage ? "#fff7ed" : "var(--chat-soft)",
                     borderRadius: "6px",
                   }}
                 >
@@ -1433,7 +1609,30 @@ export default function ChatWindow({
                   variant="standard"
                   placeholder={`Message ${selectedChat.title}…`}
                   value={inputValue}
-                  onChange={(e) => setInputValue(e.target.value)}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    setInputValue(value);
+                    onTyping?.(Boolean(value.trim()));
+                    const cursor = event.target.selectionStart ?? value.length;
+                    const textBeforeCursor = value.slice(0, cursor);
+                    const mentionMatch = textBeforeCursor.match(/(?:^|\s)@([^\s@]*)$/);
+                    const canMention = selectedChat?.type === "channel" && mentionableUsers.length > 0;
+
+                    if (mentionMatch && canMention) {
+                      setMentionQuery(mentionMatch[1]);
+                      setMentionAnchorEl(event.currentTarget);
+                    } else {
+                      setMentionQuery("");
+                      setMentionAnchorEl(null);
+                    }
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && !event.shiftKey) onTyping?.(false);
+                    if (enterToSend && event.key === "Enter" && !event.shiftKey) {
+                      event.preventDefault();
+                      handleSend();
+                    }
+                  }}
                   error={Boolean(sendError)}
                   helperText={sendError || ""}
                   disabled={sending || uploading}
@@ -1451,6 +1650,11 @@ export default function ChatWindow({
                     "& .MuiFormHelperText-root": { mx: 0, mt: 0.5 },
                   }}
                 />
+                {typingUser?.name && (
+                  <Typography variant="caption" color="text.secondary" sx={{ px: 1.75 }}>
+                    {typingUser.name} is typing…
+                  </Typography>
+                )}
 
                 {pendingFiles.length > 0 && (
                   <Box
@@ -1524,13 +1728,6 @@ export default function ChatWindow({
                       disabled={sending || uploading}
                       onClick={(e) => setEmojiAnchorEl(e.currentTarget)}
                     />
-                    <ToolBtn
-                      title="Mention"
-                      disabled={sending || uploading}
-                      icon={<AlternateEmailIcon sx={{ fontSize: 16 }} />}
-                      onClick={(e) => setMentionAnchorEl(e.currentTarget)}
-                    />
-
                     <Box
                       sx={{
                         width: "0.5px",
@@ -1548,16 +1745,14 @@ export default function ChatWindow({
                       title="Italic"
                       icon={<FormatItalicIcon sx={{ fontSize: 16 }} />}
                     />
-                    <ToolBtn
-                      title="Code"
-                      icon={<CodeIcon sx={{ fontSize: 16 }} />}
-                    />
-
                     {/* Mention picker popover */}
                     <Popover
                       open={mentionPickerOpen}
                       anchorEl={mentionAnchorEl}
-                      onClose={() => setMentionAnchorEl(null)}
+                      onClose={() => {
+                        setMentionAnchorEl(null);
+                        setMentionQuery("");
+                      }}
                       anchorOrigin={{ vertical: "top", horizontal: "left" }}
                       transformOrigin={{
                         vertical: "bottom",
@@ -1576,7 +1771,7 @@ export default function ChatWindow({
                         },
                       }}
                     >
-                      {mentionableUsers.map((user) => {
+                      {mentionCandidates.map((user) => {
                         const userId = getBuddySendId(user);
                         const name = getBuddyName(user);
                         const email = getBuddyEmail(user);
@@ -1631,51 +1826,11 @@ export default function ChatWindow({
                       })}
                     </Popover>
 
-                    <Popover
-                      open={emojiPickerOpen}
+                    <EmojiPicker
                       anchorEl={emojiAnchorEl}
-                      onClose={() => setEmojiAnchorEl(null)}
-                      anchorOrigin={{ vertical: "top", horizontal: "left" }}
-                      transformOrigin={{
-                        vertical: "bottom",
-                        horizontal: "left",
-                      }}
-                      PaperProps={{
-                        sx: {
-                          width: 244,
-                          borderRadius: "10px",
-                          border: "0.5px solid",
-                          borderColor: "divider",
-                          boxShadow: "0 8px 24px rgba(0,0,0,0.1)",
-                          p: 1,
-                        },
-                      }}
-                    >
-                      <Box
-                        sx={{
-                          display: "grid",
-                          gridTemplateColumns: "repeat(5, 1fr)",
-                          gap: 0.5,
-                        }}
-                      >
-                        {EMOJI_OPTIONS.map((emoji) => (
-                          <IconButton
-                            key={emoji}
-                            size="small"
-                            onClick={() => insertEmoji(emoji)}
-                            sx={{
-                              width: 38,
-                              height: 34,
-                              borderRadius: "7px",
-                              fontSize: 20,
-                              "&:hover": { bgcolor: BRAND_SOFT },
-                            }}
-                          >
-                            {emoji}
-                          </IconButton>
-                        ))}
-                      </Box>
-                    </Popover>
+                      onClose={closeEmojiPicker}
+                      onSelect={insertEmoji}
+                    />
                   </Stack>
 
                   <Button

@@ -2,7 +2,11 @@ import jwt from "jsonwebtoken";
 import serverConfig from "../config/server.config.js";
 import { normalizeAppName } from "../Servicess/applicationDirectory.services.js";
 
-const csv = (value) => String(value || "").split(",").map((item) => item.trim()).filter(Boolean);
+const csv = (value) =>
+  String(value || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
 
 const parseIssuerRegistry = () => {
   if (process.env.CHAT_AUTH_ISSUERS) {
@@ -25,12 +29,15 @@ const parseIssuerRegistry = () => {
   };
 };
 
-const getClaim = (payload, names) => names.map((name) => payload?.[name]).find(Boolean);
+const getClaim = (payload, names) =>
+  names.map((name) => payload?.[name]).find(Boolean);
 
 export const validateTenantId = (value) => {
   const tenantId = String(value || "").trim();
   if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(tenantId)) {
-    throw Object.assign(new Error("tenant_id has an invalid format"), { code: "CHAT_AUTH_TENANT_INVALID" });
+    throw Object.assign(new Error("tenant_id has an invalid format"), {
+      code: "CHAT_AUTH_TENANT_INVALID",
+    });
   }
   return tenantId;
 };
@@ -52,34 +59,71 @@ export const verifyChatToken = (token, { requestedApp } = {}) => {
     throw error;
   }
 
-  const algorithms = issuerConfig.algorithms || ["RS256"];
+  const algorithms =
+    Array.isArray(issuerConfig.algorithms) && issuerConfig.algorithms.length
+      ? issuerConfig.algorithms
+      : ["RS256"];
   const verificationKey = issuerConfig.publicKey || issuerConfig.secret;
-  if (!verificationKey) throw new Error(`No verification key configured for issuer ${issuer}`);
+  if (!verificationKey)
+    throw new Error(`No verification key configured for issuer ${issuer}`);
 
-  const key = typeof verificationKey === "string" ? verificationKey.replace(/\\n/g, "\n") : verificationKey;
+  const key =
+    typeof verificationKey === "string"
+      ? verificationKey.replace(/\\n/g, "\n")
+      : verificationKey;
   const payload = jwt.verify(token, key, {
     algorithms,
     issuer,
     audience: issuerConfig.audience,
-    clockTolerance: Number(process.env.CHAT_JWT_CLOCK_TOLERANCE_SECONDS || 5),
+    clockTolerance: Number.isFinite(
+      Number(process.env.CHAT_JWT_CLOCK_TOLERANCE_SECONDS),
+    )
+      ? Number(process.env.CHAT_JWT_CLOCK_TOLERANCE_SECONDS)
+      : 5,
   });
 
-  const subject = getClaim(payload, ["sub", "userId", "user_id", "appUserId", "id"]);
-  const tenantId = getClaim(payload, ["tenant_id", "tenantId", "organization_id", "org_id"]);
-  if (!subject) throw Object.assign(new Error("Token subject is required"), { code: "CHAT_AUTH_SUBJECT_MISSING" });
-  if (!tenantId) throw Object.assign(new Error("Signed tenant_id claim is required"), { code: "CHAT_AUTH_TENANT_MISSING" });
+  const subject = getClaim(payload, [
+    "sub",
+    "userId",
+    "user_id",
+    "appUserId",
+    "id",
+  ]);
+  const tenantId = getClaim(payload, [
+    "tenant_id",
+    "tenantId",
+    "organization_id",
+    "org_id",
+  ]);
+  if (!subject)
+    throw Object.assign(new Error("Token subject is required"), {
+      code: "CHAT_AUTH_SUBJECT_MISSING",
+    });
+  if (!tenantId)
+    throw Object.assign(new Error("Signed tenant_id claim is required"), {
+      code: "CHAT_AUTH_TENANT_MISSING",
+    });
   if (process.env.CHAT_REQUIRE_JTI !== "false" && !payload.jti) {
-    throw Object.assign(new Error("Token jti claim is required"), { code: "CHAT_AUTH_JTI_MISSING" });
+    throw Object.assign(new Error("Token jti claim is required"), {
+      code: "CHAT_AUTH_JTI_MISSING",
+    });
   }
 
-  const sourceApp = normalizeAppName(requestedApp || payload.app || payload.azp || "chat_system");
-  const tokenApps = Array.isArray(payload.apps) ? payload.apps.map(normalizeAppName) : [];
+  const sourceApp = normalizeAppName(
+    requestedApp || payload.app || payload.azp || "chat_system",
+  );
+  const tokenApps = Array.isArray(payload.apps)
+    ? payload.apps.map(normalizeAppName)
+    : [];
   const configuredApps = (issuerConfig.apps || []).map(normalizeAppName);
   const allowedApps = tokenApps.length ? tokenApps : configuredApps;
   if (allowedApps.length && !allowedApps.includes(sourceApp)) {
-    throw Object.assign(new Error("Token is not authorized for this host application"), {
-      code: "CHAT_AUTH_APP_FORBIDDEN",
-    });
+    throw Object.assign(
+      new Error("Token is not authorized for this host application"),
+      {
+        code: "CHAT_AUTH_APP_FORBIDDEN",
+      },
+    );
   }
 
   return {

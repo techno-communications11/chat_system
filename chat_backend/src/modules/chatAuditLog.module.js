@@ -48,8 +48,11 @@ const ChatAuditLog = sequelize.define(
   {
     tableName: "chat_audit_logs",
     timestamps: true,
-  }
+    indexes: [
+      { fields: ["appName", "createdAt"] },
+      { fields: ["appName", "action", "createdAt"] },
+    ],
+  },
 );
 
 export default ChatAuditLog;
-

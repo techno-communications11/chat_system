@@ -1,4 +1,5 @@
 const NOTIFICATIONS_ENABLED_KEY = "chat_notifications_enabled";
+let notificationAudioContext;
 
 export const areChatNotificationsEnabled = () =>
   localStorage.getItem(NOTIFICATIONS_ENABLED_KEY) === "true";
@@ -26,6 +27,13 @@ export const requestChatNotificationPermission = async () => {
   return permission;
 };
 
+export const getNotificationSupport = () => {
+  if (!("Notification" in window)) return "unsupported";
+  if (Notification.permission === "denied") return "denied";
+  if (Notification.permission === "granted") return "granted";
+  return "default";
+};
+
 export const showChatNotification = ({
   title,
   body,
@@ -37,10 +45,27 @@ export const showChatNotification = ({
   if (Notification.permission !== "granted") return null;
   if (!areChatNotificationsEnabled()) return null;
 
+  const isMobileBrowser = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+  if (isMobileBrowser && "serviceWorker" in navigator) {
+    return navigator.serviceWorker.ready
+      .then((registration) => registration.showNotification(title || "New message", {
+        body: body || "",
+        icon: icon || undefined,
+        tag: tag || undefined,
+        renotify: true,
+        silent: false,
+        vibrate: [120, 60, 120],
+      }))
+      .catch(() => null);
+  }
+
   const notification = new Notification(title || "New message", {
     body: body || "",
     icon: icon || undefined,
     tag: tag || undefined,
+    renotify: true,
+    silent: false,
+    vibrate: [120, 60, 120],
   });
 
   notification.onclick = () => {
@@ -50,4 +75,31 @@ export const showChatNotification = ({
   };
 
   return notification;
+};
+
+export const playMessageNotificationSound = () => {
+  if (!areChatNotificationsEnabled()) return;
+
+  try {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) return;
+    notificationAudioContext ||= new AudioContextClass();
+    const context = notificationAudioContext;
+    context.resume().catch(() => {});
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+    const start = context.currentTime;
+    oscillator.type = "sine";
+    oscillator.frequency.setValueAtTime(880, start);
+    oscillator.frequency.exponentialRampToValueAtTime(660, start + 0.12);
+    gain.gain.setValueAtTime(0.0001, start);
+    gain.gain.exponentialRampToValueAtTime(0.045, start + 0.015);
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.16);
+    oscillator.connect(gain);
+    gain.connect(context.destination);
+    oscillator.start(start);
+    oscillator.stop(start + 0.18);
+  } catch {
+    // Notification audio is best-effort and may be blocked by the browser.
+  }
 };

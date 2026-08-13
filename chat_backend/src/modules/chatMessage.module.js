@@ -29,10 +29,16 @@ const ChatMessage = sequelize.define(
       type: DataTypes.JSON,
       allowNull: true,
     },
+    deletedAt: { type: DataTypes.DATE, allowNull: true },
+    deletedByIdentityId: { type: DataTypes.INTEGER, allowNull: true },
   },
   {
     tableName: "chat_messages",
     timestamps: true,
+    indexes: [
+      { fields: ["conversationId", "createdAt"] },
+      { fields: ["senderIdentityId", "createdAt"] },
+    ],
   },
 );
 

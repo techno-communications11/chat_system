@@ -30,6 +30,7 @@ const ChatMessageReaction = sequelize.define(
         unique: true,
         fields: ["messageId", "chatIdentityId", "emoji"],
       },
+      { fields: ["chatIdentityId", "messageId"] },
     ],
   },
 );

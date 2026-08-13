@@ -16,7 +16,19 @@ const verifyPassword = (password, passwordHash) => {
   if (!salt || !storedHash) return false;
 
   const candidate = hashPassword(password, salt).split(":")[1];
-  return crypto.timingSafeEqual(Buffer.from(candidate), Buffer.from(storedHash));
+  const candidateBuffer = Buffer.from(candidate, "hex");
+  const storedBuffer = Buffer.from(storedHash, "hex");
+  return candidateBuffer.length === storedBuffer.length &&
+    crypto.timingSafeEqual(candidateBuffer, storedBuffer);
+};
+
+const assertPassword = (password) => {
+  if (typeof password !== "string" || password.length < 8 || password.length > 256) {
+    const error = new Error("password must be between 8 and 256 characters");
+    error.status = 400;
+    error.code = "CHAT_INVALID_PASSWORD";
+    throw error;
+  }
 };
 
 const normalizeRoleName = (roleName) =>
@@ -130,6 +142,7 @@ export const registerChatUser = async ({
     error.code = "CHAT_INVALID_INPUT";
     throw error;
   }
+  assertPassword(password);
 
   const role = await ChatRole.findOne({ where: { name: normalizeRoleName(roleName) } });
 
@@ -164,6 +177,7 @@ export const loginChatUser = async ({ login, password, appName }) => {
     error.code = "CHAT_INVALID_INPUT";
     throw error;
   }
+  assertPassword(password);
 
   const user = await ChatUser.findOne({
     where: {

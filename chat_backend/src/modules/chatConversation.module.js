@@ -40,6 +40,10 @@ const ChatConversation = sequelize.define(
   {
     tableName: "chat_conversations",
     timestamps: true,
+    indexes: [
+      { fields: ["appName", "lastMessageAt"] },
+      { fields: ["appName", "type"] },
+    ],
   },
 );
 

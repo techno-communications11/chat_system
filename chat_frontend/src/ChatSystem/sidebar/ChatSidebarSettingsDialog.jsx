@@ -11,19 +11,26 @@ import {
   Divider,
   FormControlLabel,
   Switch,
+  ToggleButton,
+  ToggleButtonGroup,
   Typography,
 } from "@mui/material";
 import CircleIcon from "@mui/icons-material/Circle";
 import NotificationsActiveIcon from "@mui/icons-material/NotificationsActive";
+import DarkModeIcon from "@mui/icons-material/DarkMode";
+import LightModeIcon from "@mui/icons-material/LightMode";
 import PhotoCameraIcon from "@mui/icons-material/PhotoCamera";
+import LogoutIcon from "@mui/icons-material/Logout";
 import { getImageUrl } from "../chatHelpers";
 import { getInitial, statusOptions } from "./sidebarUtils";
+import { useThemeMode } from "../../themeMode";
 
 export default function ChatSidebarSettingsDialog({
   avatarUploading,
   currentStatus,
   currentUser,
   currentUserName,
+  enterToSend = false,
   notificationPermission,
   notificationsEnabled,
   onAvatarPick,
@@ -31,12 +38,40 @@ export default function ChatSidebarSettingsDialog({
   onStatusPick,
   onTestNotification,
   onToggleNotifications,
+  onEnterToSendChange,
+  onLogout,
   open,
   settingsNotice,
   statusSaving,
 }) {
+  const { mode, setMode } = useThemeMode();
+  const isDarkMode = mode === "dark";
+
   return (
-    <Dialog open={open} onClose={onClose} fullWidth maxWidth="xs">
+    <Dialog
+      open={open}
+      onClose={onClose}
+      fullWidth
+      maxWidth="xs"
+      PaperProps={{
+        sx: {
+          color: isDarkMode ? "#ffffff" : "text.primary",
+          "& .MuiTypography-root": { color: isDarkMode ? "#ffffff" : "text.primary" },
+          "& .MuiTypography-colorTextSecondary": {
+            color: isDarkMode ? "rgba(255,255,255,0.72)" : "text.secondary",
+          },
+          "& .MuiButton-root": { color: isDarkMode ? "#ffffff" : "primary.main" },
+          "& .MuiToggleButton-root": {
+            color: isDarkMode ? "#ffffff" : "text.primary",
+            borderColor: isDarkMode ? "rgba(255,255,255,0.35)" : "divider",
+          },
+          "& .MuiToggleButton-root.Mui-selected": {
+            color: isDarkMode ? "#ffffff" : "primary.main",
+            bgcolor: isDarkMode ? "rgba(255,255,255,0.18)" : "action.selected",
+          },
+        },
+      }}
+    >
       <DialogTitle>Settings</DialogTitle>
       <DialogContent dividers>
         <Box display="flex" alignItems="center" gap={1.5} mb={2}>
@@ -144,8 +179,54 @@ export default function ChatSidebarSettingsDialog({
             {settingsNotice}
           </Typography>
         )}
+        <Divider sx={{ my: 1.5 }} />
+        <Box display="flex" alignItems="center" justifyContent="space-between" gap={1}>
+          <Box minWidth={0}>
+            <Typography fontWeight={800}>Enter to send</Typography>
+            <Typography variant="caption" color="text.secondary" noWrap>
+              Press Enter to send messages
+            </Typography>
+          </Box>
+          <Switch checked={enterToSend} onChange={(event) => onEnterToSendChange?.(event.target.checked)} />
+        </Box>
+        <Divider sx={{ my: 1.5 }} />
+        <Box display="flex" alignItems="center" justifyContent="space-between" gap={1}>
+          <Box display="flex" alignItems="center" gap={1} minWidth={0}>
+            <DarkModeIcon color="primary" />
+            <Box minWidth={0}>
+              <Typography fontWeight={800}>Dark mode</Typography>
+              <Typography variant="caption" color="text.secondary" noWrap>
+                Use a darker chat appearance
+              </Typography>
+            </Box>
+          </Box>
+          <ToggleButtonGroup
+            exclusive
+            size="small"
+            value={mode}
+            onChange={(_, nextMode) => nextMode && setMode(nextMode)}
+            aria-label="Choose theme"
+          >
+            <ToggleButton value="light" aria-label="Light theme" sx={{ textTransform: "none", gap: 0.5 }}>
+              <LightModeIcon fontSize="small" />
+              Light
+            </ToggleButton>
+            <ToggleButton value="dark" aria-label="Dark theme" sx={{ textTransform: "none", gap: 0.5 }}>
+              <DarkModeIcon fontSize="small" />
+              Dark
+            </ToggleButton>
+          </ToggleButtonGroup>
+        </Box>
       </DialogContent>
       <DialogActions>
+        <Button
+          color="error"
+          startIcon={<LogoutIcon />}
+          onClick={onLogout}
+          sx={{ mr: "auto" }}
+        >
+          Logout
+        </Button>
         <Button onClick={onTestNotification}>Test</Button>
         <Button variant="contained" onClick={onClose}>
           Done

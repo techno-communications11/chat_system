@@ -46,7 +46,7 @@ export const decryptSecret = (payload) => {
   const decipher = crypto.createDecipheriv(
     algorithm,
     getKey(),
-    Buffer.from(ivText, "base64")
+    Buffer.from(ivText, "base64"),
   );
   decipher.setAuthTag(Buffer.from(authTagText, "base64"));
 

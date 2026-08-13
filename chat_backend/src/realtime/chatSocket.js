@@ -29,6 +29,9 @@ const canAccessConversation = async ({ tenantId, userId, conversationId }) => {
 
 export const initChatSocket = (httpServer, allowedOrigins) => {
   io = new Server(httpServer, {
+    maxHttpBufferSize: 5 * 1024 * 1024,
+    pingTimeout: 20_000,
+    pingInterval: 25_000,
     cors: {
       origin: (origin, callback) => {
         if (!origin || allowedOrigins.has(origin)) {
@@ -111,6 +114,30 @@ export const initChatSocket = (httpServer, allowedOrigins) => {
     socket.on("leave:conversation", (chatId) => {
       if (chatId) {
         socket.leave(room(appName, `conversation:${String(chatId)}`));
+      }
+    });
+
+    socket.on("typing:update", async (payload = {}, acknowledge) => {
+      try {
+        const chatId = String(payload.chatId || "");
+        const allowed = chatId && await canAccessConversation({
+          tenantId: appName,
+          userId,
+          conversationId: chatId,
+        });
+        if (!allowed) {
+          acknowledge?.({ ok: false, code: "CHAT_CONVERSATION_FORBIDDEN" });
+          return;
+        }
+        socket.to(room(appName, `conversation:${chatId}`)).emit("typing:update", {
+          chatId,
+          userId: String(userId),
+          name: socket.data.displayName,
+          typing: Boolean(payload.typing),
+        });
+        acknowledge?.({ ok: true });
+      } catch {
+        acknowledge?.({ ok: false, code: "CHAT_TYPING_FAILED" });
       }
     });
 

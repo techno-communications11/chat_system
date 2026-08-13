@@ -3,7 +3,7 @@ import SearchIcon from "@mui/icons-material/Search";
 
 export default function SearchBox({ searchTerm, setSearchTerm }) {
   return (
-    <Box p={1.5} sx={{ borderBottom: "1px solid #edf0f4" }}>
+    <Box p={1.5} sx={{ borderBottom: "1px solid", borderColor: "divider" }}>
       <TextField
         fullWidth
         placeholder="Search chats"
@@ -14,7 +14,7 @@ export default function SearchBox({ searchTerm, setSearchTerm }) {
         InputProps={{ startAdornment: <SearchIcon sx={{ mr: 1, color: "#7b8494" }} /> }}
         sx={{
           "& .MuiOutlinedInput-root": {
-            bgcolor: "#f8fafc",
+            bgcolor: "action.hover",
             borderRadius: 1,
             fontSize: 14,
           },

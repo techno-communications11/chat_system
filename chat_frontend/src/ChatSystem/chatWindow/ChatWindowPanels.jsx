@@ -26,8 +26,8 @@ import {
   getImageUrl,
 } from "../chatHelpers";
 
-const BRAND_SOFT = "#ede9f8";
-const BRAND_TEXT = "#4a1e72";
+const BRAND_SOFT = "var(--chat-soft)";
+const BRAND_TEXT = "var(--chat-brand-text)";
 
 export function ToolBtn({ title, icon, disabled, onClick }) {
   return (
@@ -63,7 +63,7 @@ export function PinnedMessageBanner({ latestPinnedMessage, pinnedCount }) {
       alignItems="center"
       gap={1}
       sx={{
-        bgcolor: "#fff7ed",
+        bgcolor: "var(--chat-subtle)",
         borderBottom: "0.5px solid",
         borderColor: "#fed7aa",
       }}
@@ -78,7 +78,12 @@ export function PinnedMessageBanner({ latestPinnedMessage, pinnedCount }) {
         </Typography>
       </Box>
       {pinnedCount > 1 && (
-        <Typography fontSize={11} fontWeight={700} color="#9a3412" flexShrink={0}>
+        <Typography
+          fontSize={11}
+          fontWeight={700}
+          color="#9a3412"
+          flexShrink={0}
+        >
           +{pinnedCount - 1}
         </Typography>
       )}
@@ -97,7 +102,10 @@ export function ForwardMessageDialog({
     const chatId =
       chat.__conversationType === "channel"
         ? getChannelId(chat)
-        : getBuddySendId(chat) || chat.directConversationId || chat.chat_id || chat.chatId;
+        : getBuddySendId(chat) ||
+          chat.directConversationId ||
+          chat.chat_id ||
+          chat.chatId;
     const selectedId =
       selectedChat?.type === "channel" ? selectedChat.id : selectedChat?.id;
 
@@ -105,7 +113,12 @@ export function ForwardMessageDialog({
   });
 
   return (
-    <Dialog open={Boolean(forwardMessage)} onClose={onClose} fullWidth maxWidth="xs">
+    <Dialog
+      open={Boolean(forwardMessage)}
+      onClose={onClose}
+      fullWidth
+      maxWidth="xs"
+    >
       <DialogTitle>Forward to</DialogTitle>
       <DialogContent dividers sx={{ p: 0 }}>
         <List dense sx={{ maxHeight: 360, overflow: "auto", py: 0.5 }}>
@@ -126,16 +139,24 @@ export function ForwardMessageDialog({
                     height: 32,
                     mr: 1.25,
                     fontSize: 12,
-                    bgcolor: isChannel ? BRAND_SOFT : "#e7f0ff",
+                    bgcolor: isChannel ? BRAND_SOFT : "var(--chat-blue-soft)",
                     color: isChannel ? BRAND_TEXT : "#1a4fa0",
                   }}
                 >
-                  {isChannel ? <GroupsIcon sx={{ fontSize: 16 }} /> : title.charAt(0)}
+                  {isChannel ? (
+                    <GroupsIcon sx={{ fontSize: 16 }} />
+                  ) : (
+                    title.charAt(0)
+                  )}
                 </Avatar>
                 <ListItemText
                   primary={title}
                   secondary={subtitle}
-                  primaryTypographyProps={{ noWrap: true, fontSize: 13.5, fontWeight: 600 }}
+                  primaryTypographyProps={{
+                    noWrap: true,
+                    fontSize: 13.5,
+                    fontWeight: 600,
+                  }}
                   secondaryTypographyProps={{ noWrap: true, fontSize: 12 }}
                 />
               </ListItemButton>

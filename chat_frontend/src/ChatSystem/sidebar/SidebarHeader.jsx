@@ -1,15 +1,10 @@
-import { Box, CircularProgress, IconButton, Tooltip } from "@mui/material";
+import { Box, IconButton, Tooltip } from "@mui/material";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import AddIcon from "@mui/icons-material/Add";
 import PinglyMark from "../PinglyMark";
-import RefreshIcon from "@mui/icons-material/Refresh";
-import SettingsIcon from "@mui/icons-material/Settings";
 
 const SidebarHeader = ({
-  loading,
   onCreateGroup,
-  onRefresh,
-  onSettingsOpen,
 }) => {
   return (
     <Box
@@ -18,8 +13,9 @@ const SidebarHeader = ({
       display="flex"
       alignItems="center"
       justifyContent="space-between"
-      borderBottom="1px solid #edf0f4"
-      bgcolor="#ffffff"
+      borderBottom="1px solid"
+      borderColor="divider"
+      bgcolor="background.paper"
     >
       <Box display="flex" alignItems="center" gap={1} minWidth={0}>
         <Tooltip title="Back">
@@ -36,18 +32,6 @@ const SidebarHeader = ({
           <IconButton size="small" onClick={onCreateGroup}>
             <AddIcon fontSize="small" />
           </IconButton>
-        </Tooltip>
-        <Tooltip title="Settings">
-          <IconButton size="small" onClick={onSettingsOpen}>
-            <SettingsIcon fontSize="small" />
-          </IconButton>
-        </Tooltip>
-        <Tooltip title="Refresh">
-          <span>
-            <IconButton size="small" onClick={onRefresh} disabled={loading}>
-              {loading ? <CircularProgress size={18} /> : <RefreshIcon />}
-            </IconButton>
-          </span>
         </Tooltip>
       </Box>
     </Box>

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Navigate, Route, BrowserRouter as Router, Routes } from "react-router-dom";
 import { Box } from "@mui/material";
+import { AppThemeProvider } from "./appTheme";
 import ChatLauncher from "./ChatSystem/ChatLauncher";
 import ChatSystem from "./ChatSystem/Chatsystem";
 import { CHAT_APP_BASE_PATH } from "./ChatSystem/chatRoutes";
@@ -158,9 +159,10 @@ function ProtectedChatPage() {
 
 function App() {
   return (
-    <Router>
-      <TicketingTokenBridge>
-        <Routes>
+    <AppThemeProvider>
+      <Router>
+        <TicketingTokenBridge>
+          <Routes>
           <Route path="/" element={<Navigate to={CHAT_APP_BASE_PATH} replace />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path={CHAT_APP_BASE_PATH} element={<ProtectedChatPage />} />
@@ -181,9 +183,10 @@ function App() {
               </Box>
             }
           />
-        </Routes>
-      </TicketingTokenBridge>
-    </Router>
+          </Routes>
+        </TicketingTokenBridge>
+      </Router>
+    </AppThemeProvider>
   );
 }
 

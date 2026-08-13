@@ -1,0 +1,25 @@
+export const EMOJI_OPTIONS = [
+  ["\u{1F600}", "grinning face"], ["\u{1F603}", "smile"], ["\u{1F604}", "smile eyes"],
+  ["\u{1F601}", "grin"], ["\u{1F606}", "laughing"], ["\u{1F602}", "joy tears"],
+  ["\u{1F923}", "rofl laughing"], ["\u{1F609}", "wink"], ["\u{1F60D}", "heart eyes love"],
+  ["\u{1F618}", "kiss"], ["\u{1F970}", "smiling hearts"], ["\u{1F917}", "hug"],
+  ["\u{1F914}", "thinking"], ["\u{1F928}", "raised eyebrow"], ["\u{1F60E}", "sunglasses cool"],
+  ["\u{1F621}", "angry"], ["\u{1F92C}", "swearing"], ["\u{1F62D}", "cry sob"],
+  ["\u{1F622}", "sad"], ["\u{1F625}", "disappointed"], ["\u{1F631}", "scream fear"],
+  ["\u{1F634}", "sleeping"], ["\u{1F644}", "rolling eyes"], ["\u{1F92D}", "cover mouth"],
+  ["\u{1F44D}", "thumbs up like yes"], ["\u{1F44E}", "thumbs down dislike no"], ["\u{1F44C}", "okay"],
+  ["\u{1F44F}", "clap applause"], ["\u{1F64F}", "pray thanks"], ["\u{1F4AA}", "strong muscle"],
+  ["\u{1F91D}", "handshake"], ["\u{1F4AF}", "hundred"], ["\u{2705}", "check done"],
+  ["\u{2764}\u{FE0F}", "red heart love"], ["\u{1F49B}", "yellow heart"], ["\u{1F49A}", "green heart"],
+  ["\u{1F499}", "blue heart"], ["\u{1F49C}", "purple heart"], ["\u{1F494}", "broken heart"],
+  ["\u{1F525}", "fire hot"], ["\u{1F389}", "party celebration"], ["\u{1F38A}", "confetti"],
+  ["\u{1F381}", "gift"], ["\u{1F3C6}", "trophy winner"], ["\u{2B50}", "star"],
+  ["\u{1F680}", "rocket"], ["\u{1F4A1}", "idea light bulb"], ["\u{1F4AF}", "symbols"],
+  ["\u{1F436}", "dog"], ["\u{1F431}", "cat"], ["\u{1F98A}", "fox"], ["\u{1F43B}", "bear"],
+  ["\u{1F34E}", "apple fruit"], ["\u{1F355}", "pizza food"], ["\u{1F354}", "burger food"],
+  ["\u{1F36A}", "cookie food"], ["\u{2615}", "coffee drink"], ["\u{1F37A}", "beer drink"],
+  ["\u{1F4F1}", "phone mobile"], ["\u{1F4BB}", "laptop computer"], ["\u{1F4F7}", "camera"],
+  ["\u{1F3B5}", "music note"], ["\u{1F3AE}", "game"], ["\u{1F697}", "car travel"],
+];
+
+export const REACTION_OPTIONS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];

@@ -140,7 +140,7 @@ Audio and video actions first persist a `ringing` call and notify every other
 conversation participant. The recipient must accept or decline. Acceptance
 marks the call as `accepted`, opens an in-app media panel, and uses Socket.IO to
 relay WebRTC offer, answer, ICE candidate, join, and leave messages between
-participants. No external meeting API, OAuth consent, or third-party meeting
+participants. No external meeting-platform integration or OAuth consent is
 URL is used.
 
 Call/provider state is stored in `chat_calls` with provider

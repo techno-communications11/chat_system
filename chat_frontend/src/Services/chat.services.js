@@ -74,6 +74,12 @@ export const getChatMessagesService = (chatId, params = {}) =>
     params,
   });
 
+export const clearChatHistoryService = (chatId) =>
+  api.delete(
+    `/chat-service/conversations/${encodeURIComponent(chatId)}/messages`,
+    getChatHeaders(),
+  );
+
 export const sendConversationMessageService = (chatId, text, options = {}) =>
   api.post(
     `/chat-service/conversations/${encodeURIComponent(chatId)}/messages`,
@@ -87,6 +93,14 @@ export const editConversationMessageService = (chatId, messageId, text) =>
       messageId,
     )}`,
     { text },
+    getChatHeaders(),
+  );
+
+export const deleteConversationMessageService = (chatId, messageId) =>
+  api.delete(
+    `/chat-service/conversations/${encodeURIComponent(chatId)}/messages/${encodeURIComponent(
+      messageId,
+    )}`,
     getChatHeaders(),
   );
 
@@ -141,6 +155,9 @@ export const startConversationCallService = (chatId, type) =>
     { type },
     getChatHeaders(),
   );
+
+export const getActiveConversationCallsService = () =>
+  api.get("/chat-service/calls/active", getChatHeaders());
 
 export const endConversationCallService = (chatId, callId) =>
   api.post(

@@ -1,10 +1,22 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Alert, Box, Button, CircularProgress, TextField, Typography } from "@mui/material";
+import {
+  Alert,
+  Box,
+  Button,
+  CircularProgress,
+  IconButton,
+  InputAdornment,
+  TextField,
+  Tooltip,
+  Typography,
+} from "@mui/material";
 import LoginIcon from "@mui/icons-material/Login";
+import VisibilityIcon from "@mui/icons-material/Visibility";
+import VisibilityOffIcon from "@mui/icons-material/VisibilityOff";
 import { useNavigate } from "react-router-dom";
 import { loginChatService } from "./Services/chat.services";
 import { CHAT_APP_BASE_PATH } from "./ChatSystem/chatRoutes";
-import { getTokenUser, storeAuthToken, storeChatAppName } from "./utils/authToken";
+import { getTokenUser, storeAuthToken } from "./utils/authToken";
 
 const getMergedParams = () => {
   const url = new URL(window.location.href);
@@ -25,7 +37,6 @@ const readLoginParams = () => {
   return {
     login: params.get("login") || params.get("email") || params.get("username") || "",
     password: params.get("password") || "",
-    type: params.get("type") || params.get("app") || params.get("appName") || params.get("portal") || "",
     autoLogin: String(params.get("autoLogin") || params.get("auto") || "").toLowerCase() === "true",
   };
 };
@@ -52,6 +63,7 @@ function LoginPage() {
   const [form, setForm] = useState(initialParams);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const submittedAutoLogin = useRef(false);
 
   const submitLogin = useCallback(async (event) => {
@@ -63,7 +75,6 @@ function LoginPage() {
       const response = await loginChatService({
         login: form.login,
         password: form.password,
-        type: form.type,
       });
       const token = response.data?.data?.token;
       const user = response.data?.data?.user;
@@ -71,7 +82,6 @@ function LoginPage() {
       if (!token) throw new Error("Login did not return a token");
 
       storeAuthToken(token);
-      if (form.type) storeChatAppName(form.type);
       sessionStorage.setItem("user", JSON.stringify(user || getTokenUser()));
       removeSensitiveParams();
       navigate(CHAT_APP_BASE_PATH, { replace: true });
@@ -84,7 +94,7 @@ function LoginPage() {
     } finally {
       setSubmitting(false);
     }
-  }, [form.login, form.password, form.type, navigate]);
+  }, [form.login, form.password, navigate]);
 
   useEffect(() => {
     if (!initialParams.autoLogin || submittedAutoLogin.current) return;
@@ -103,7 +113,7 @@ function LoginPage() {
       sx={{
         minHeight: "100vh",
         width: "100vw",
-        bgcolor: "#eef3f8",
+        bgcolor: "background.default",
         display: "grid",
         placeItems: "center",
         px: 2,
@@ -115,7 +125,7 @@ function LoginPage() {
         sx={{
           width: "100%",
           maxWidth: 380,
-          bgcolor: "#ffffff",
+          bgcolor: "background.paper",
           border: "1px solid #d7e0ea",
           borderRadius: 2,
           boxShadow: "0 18px 45px rgba(25, 41, 61, 0.12)",
@@ -142,24 +152,30 @@ function LoginPage() {
         />
         <TextField
           label="Password"
-          type="password"
+          type={showPassword ? "text" : "password"}
           value={form.password}
           onChange={updateField("password")}
           autoComplete="current-password"
           fullWidth
           required
           margin="normal"
+          InputProps={{
+            endAdornment: (
+              <InputAdornment position="end">
+                <Tooltip title={showPassword ? "Hide password" : "Show password"}>
+                  <IconButton
+                    edge="end"
+                    aria-label={showPassword ? "Hide password" : "Show password"}
+                    onClick={() => setShowPassword((visible) => !visible)}
+                    onMouseDown={(event) => event.preventDefault()}
+                  >
+                    {showPassword ? <VisibilityOffIcon /> : <VisibilityIcon />}
+                  </IconButton>
+                </Tooltip>
+              </InputAdornment>
+            ),
+          }}
         />
-        <TextField
-          label="Portal type"
-          value={form.type}
-          onChange={updateField("type")}
-          placeholder="ticket_portal"
-          autoComplete="organization"
-          fullWidth
-          margin="normal"
-        />
-
         <Button
           type="submit"
           variant="contained"

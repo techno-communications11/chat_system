@@ -46,6 +46,9 @@ export default function ChatSidebar({
   loadError,
   loading,
   currentStatus,
+  enterToSend = false,
+  onEnterToSendChange,
+  onLogout,
   onAvatarUpload,
   onCreateGroup,
   onRefresh,
@@ -206,12 +209,12 @@ export default function ChatSidebar({
     <Box
       className={selectedChat ? "d-none d-md-grid" : "d-grid"}
       sx={{
-        gridTemplateColumns: "60px minmax(0, 1fr)",
+        gridTemplateColumns: { xs: "56px minmax(0, 1fr)", md: "68px minmax(0, 1fr)" },
         height: "100%",
         minHeight: 0,
         minWidth: 0,
-        bgcolor: "#ffffff",
-        borderRight: { md: "1px solid #dfe3ea" },
+        bgcolor: "background.paper",
+        borderRight: { md: "1px solid", borderColor: "divider" },
       }}
     >
       <SidebarRail
@@ -220,6 +223,7 @@ export default function ChatSidebar({
         currentUserName={currentUserName}
         onOpenCalls={() => openLibrary({ tab: "calls" })}
         onOpenMedia={() => openLibrary({ tab: "media" })}
+        onSettingsOpen={() => setSettingsOpen(true)}
         onTabSelect={setTab}
         totalUnreadCount={totalUnreadCount}
       />
@@ -233,10 +237,7 @@ export default function ChatSidebar({
 
       <Box sx={{ display: "flex", flexDirection: "column", minHeight: 0 }}>
         <SidebarHeader
-          loading={loading}
           onCreateGroup={onCreateGroup}
-          onRefresh={onRefresh}
-          onSettingsOpen={() => setSettingsOpen(true)}
         />
         <SearchBox searchTerm={searchTerm} setSearchTerm={setSearchTerm} />
         <ConversationList
@@ -257,12 +258,15 @@ export default function ChatSidebar({
         currentUser={currentUser}
         currentUserName={currentUserName}
         notificationPermission={notificationPermission}
+        enterToSend={enterToSend}
         notificationsEnabled={notificationsEnabled}
         onAvatarPick={handleAvatarPick}
         onClose={() => setSettingsOpen(false)}
         onStatusPick={onStatusChange}
         onTestNotification={handleTestNotification}
         onToggleNotifications={handleToggleNotifications}
+        onEnterToSendChange={onEnterToSendChange}
+        onLogout={onLogout}
         open={settingsOpen}
         settingsNotice={settingsNotice}
         statusSaving={statusSaving}

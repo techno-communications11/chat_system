@@ -9,9 +9,6 @@ test("call payload hides join details while a recipient is still ringing", () =>
     type: "video",
     status: "ringing",
     provider: "internal_webrtc",
-    providerSpaceName: null,
-    meetingUri: null,
-    meetingCode: null,
     startedByUserId: "user-1",
     startedAt: new Date("2026-01-01T00:00:00Z"),
     endedAt: null,
@@ -20,7 +17,6 @@ test("call payload hides join details while a recipient is still ringing", () =>
   assert.equal(payload.status, "ringing");
   assert.equal(payload.startedBy.id, "user-1");
   assert.equal(payload.callUrl, undefined);
-  assert.equal(payload.providerSpaceName, undefined);
 });
 
 test("accepted call payload uses the internal WebRTC provider", () => {
@@ -30,9 +26,6 @@ test("accepted call payload uses the internal WebRTC provider", () => {
     type: "audio",
     status: "accepted",
     provider: "internal_webrtc",
-    providerSpaceName: null,
-    meetingUri: null,
-    meetingCode: null,
     startedByUserId: "user-1",
     startedAt: new Date("2026-01-01T00:00:00Z"),
     endedAt: null,

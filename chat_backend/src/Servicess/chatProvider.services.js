@@ -8,6 +8,7 @@ import ChatMessageReaction from "../modules/chatMessageReaction.module.js";
 import ChatAuditLog from "../modules/chatAuditLog.module.js";
 import ChatGroup from "../modules/chatGroup.module.js";
 import ChatChannel from "../modules/chatChannel.module.js";
+import ChatCall from "../modules/chatCall.module.js";
 import { writeChatAuditLog } from "./chatAudit.services.js";
 import {
   getChatDirectoryUserById,
@@ -25,6 +26,8 @@ import {
   finishCall,
   markCallMissed,
   respondToRingingCall,
+  expireStaleCalls,
+  toCallPayload,
 } from "./chatCallLifecycle.services.js";
 import {
   broadcastAvatarUpdate,
@@ -440,12 +443,13 @@ const toMessage = (message) => ({
   message_id: String(message.id),
   chatId: String(message.conversationId),
   chat_id: String(message.conversationId),
-  text: message.text,
+  text: message.deletedAt ? "This message was deleted" : message.text,
   replyTo: message.replyToMessageId ? String(message.replyToMessageId) : null,
   sender: message.sender ? toUser(message.sender) : null,
   senderId: message.sender ? String(message.sender.appUserId) : String(message.senderIdentityId),
   reactions: (message.reactions || []).map(toReaction),
-  metadata: message.metadata,
+  metadata: { ...(message.metadata || {}), ...(message.deletedAt ? { deleted: true } : {}) },
+  deletedAt: message.deletedAt || null,
   createdAt: message.createdAt,
   updatedAt: message.updatedAt,
 });
@@ -499,6 +503,15 @@ const toConversation = async (conversation, currentIdentityId) => {
     unreadWhere.createdAt = { [Op.gt]: currentParticipant.lastReadAt };
   }
 
+  if (currentParticipant?.clearedAt) {
+    unreadWhere.createdAt = { [Op.gt]: currentParticipant.clearedAt };
+  }
+
+  const visibleLastMessage = currentParticipant?.clearedAt && lastMessage &&
+    new Date(lastMessage.createdAt).getTime() <= new Date(currentParticipant.clearedAt).getTime()
+    ? null
+    : lastMessage;
+
   const unreadCount = await ChatMessage.count({ where: unreadWhere });
 
   return {
@@ -517,8 +530,8 @@ const toConversation = async (conversation, currentIdentityId) => {
     participants: participants.map((participant) => toUser(participant.identity)),
     participantCount: participants.length,
     unreadCount,
-    lastMessage: lastMessage ? toMessage(lastMessage) : null,
-    lastMessageAt: conversation.lastMessageAt,
+    lastMessage: visibleLastMessage ? toMessage(visibleLastMessage) : null,
+    lastMessageAt: visibleLastMessage ? conversation.lastMessageAt : null,
     createdAt: conversation.createdAt,
     updatedAt: conversation.updatedAt,
   };
@@ -1233,7 +1246,7 @@ export const searchChatMessages = async ({ actor, query = {} }) => {
         attributes: [],
       },
     ],
-    attributes: ["conversationId"],
+    attributes: ["conversationId", "clearedAt"],
   });
   const conversationIds = memberships.map((membership) => membership.conversationId);
 
@@ -1241,9 +1254,11 @@ export const searchChatMessages = async ({ actor, query = {} }) => {
     return { data: [], messages: [], pagination: { limit, hasMore: false } };
   }
 
-  const where = {
-    conversationId: { [Op.in]: conversationIds },
-  };
+  const visibleConversationFilters = memberships.map((membership) => ({
+    conversationId: membership.conversationId,
+    ...(membership.clearedAt ? { createdAt: { [Op.gt]: membership.clearedAt } } : {}),
+  }));
+  const where = { [Op.or]: visibleConversationFilters };
 
   if (search) {
     where.text = { [Op.like]: `%${search}%` };
@@ -1309,6 +1324,28 @@ export const searchChatMessages = async ({ actor, query = {} }) => {
       hasMore: data.length === limit,
     },
   };
+};
+
+export const clearChatHistory = async ({ actor, chatId }) => {
+  const identity = await ensureLocalIdentity(actor);
+  const participant = await getParticipantForMember({
+    chatId,
+    identityId: identity.id,
+    appName: actor.appName,
+  });
+  const clearedAt = new Date();
+
+  await participant.update({ clearedAt, lastReadAt: clearedAt });
+  await writeChatAuditLog({
+    appName: actor.appName,
+    appUserId: actor.appUserId,
+    provider,
+    action: "clear_chat_history",
+    targetChatId: String(chatId),
+    metadata: { clearedAt: clearedAt.toISOString(), scope: "participant" },
+  });
+
+  return { chatId: String(chatId), clearedAt: clearedAt.toISOString(), scope: "participant" };
 };
 
 export const getChatAuditLogs = async ({ actor, query = {} }) => {
@@ -1596,10 +1633,15 @@ export const joinChatChannel = async ({ actor, channelId }) => {
 
 export const getChatMessages = async ({ actor, chatId, query = {} }) => {
   const identity = await ensureLocalIdentity(actor);
-  await getConversationForMember({ chatId, identityId: identity.id, appName: actor.appName });
+  const participant = await getParticipantForMember({ chatId, identityId: identity.id, appName: actor.appName });
 
   const limit = normalizeLimit(query.limit, 50, 100);
   const where = { conversationId: chatId };
+  const createdAtFilters = [];
+
+  if (participant.clearedAt) {
+    createdAtFilters.push({ [Op.gt]: participant.clearedAt });
+  }
 
   if (query.before) {
     const cursorMessage = await ChatMessage.findOne({
@@ -1610,9 +1652,12 @@ export const getChatMessages = async ({ actor, chatId, query = {} }) => {
     });
 
     if (cursorMessage) {
-      where.createdAt = { [Op.lt]: cursorMessage.createdAt };
+      createdAtFilters.push({ [Op.lt]: cursorMessage.createdAt });
     }
   }
+
+  if (createdAtFilters.length === 1) where.createdAt = createdAtFilters[0];
+  if (createdAtFilters.length > 1) where[Op.and] = createdAtFilters.map((createdAt) => ({ createdAt }));
 
   const messages = await ChatMessage.findAll({
     where,
@@ -1777,6 +1822,19 @@ export const editChatMessage = async ({ actor, chatId, messageId, text }) => {
   });
 
   return toMessage(fullMessage);
+};
+
+export const deleteChatMessage = async ({ actor, chatId, messageId }) => {
+  const identity = await ensureLocalIdentity(actor);
+  assertString(messageId, "messageId");
+  const conversation = await getConversationForMember({ chatId, identityId: identity.id, appName: actor.appName });
+  const message = await ChatMessage.findOne({ where: { id: messageId, conversationId: conversation.id, senderIdentityId: identity.id } });
+  if (!message) throw new ChatServiceError("Message not found or cannot be deleted", { status: 404, code: "CHAT_MESSAGE_NOT_DELETABLE" });
+  await message.update({ deletedAt: new Date(), deletedByIdentityId: identity.id, text: "" });
+  const payload = toMessage(await getMessageWithReactions(message.id));
+  await notifyConversationMessageUpdate({ appName: actor.appName, conversationId: conversation.id, message: payload, participantUserIds: await getConversationParticipantUserIds(conversation.id) });
+  await writeChatAuditLog({ appName: actor.appName, appUserId: actor.appUserId, provider, action: "delete_message", targetChatId: conversation.id, metadata: { messageId: message.id } });
+  return payload;
 };
 
 export const pinChatMessage = async ({ actor, chatId, messageId, pinned = true }) => {
@@ -1962,6 +2020,36 @@ export const startChatCall = async ({ actor, chatId, type }) => {
   });
 
   return call;
+};
+
+// Used after a browser refresh/reconnect. Call state is persisted in the
+// database, so the client must not rely on React memory to recover it.
+export const listActiveChatCalls = async ({ actor }) => {
+  const identity = await ensureLocalIdentity(actor);
+  const memberships = await ChatConversationParticipant.findAll({
+    where: { chatIdentityId: identity.id },
+    attributes: ["conversationId"],
+  });
+  const conversationIds = memberships.map((item) => item.conversationId);
+  if (conversationIds.length === 0) return [];
+
+  for (const conversationId of conversationIds) {
+    await expireStaleCalls({
+      appName: actor.appName,
+      conversationId,
+    });
+  }
+
+  const calls = await ChatCall.findAll({
+    where: {
+      appName: actor.appName,
+      conversationId: { [Op.in]: conversationIds },
+      status: ["ringing", "connecting", "accepted"],
+    },
+    order: [["startedAt", "DESC"]],
+  });
+
+  return calls.map((call) => toCallPayload(call));
 };
 
 export const respondChatCall = async ({ actor, chatId, callId, action }) => {

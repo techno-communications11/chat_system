@@ -18,19 +18,24 @@ const configure = () => {
   });
 };
 
-const token = (overrides = {}, options = {}) => jwt.sign({
-  tenant_id: "company-a",
-  name: "Ada",
-  jti: "assertion-1",
-  ...overrides,
-}, secret, {
-  algorithm: "HS256",
-  subject: "user-42",
-  issuer: "https://identity.example.test",
-  audience: "chat-api",
-  expiresIn: "5m",
-  ...options,
-});
+const token = (overrides = {}, options = {}) =>
+  jwt.sign(
+    {
+      tenant_id: "company-a",
+      name: "Ada",
+      jti: "assertion-1",
+      ...overrides,
+    },
+    secret,
+    {
+      algorithm: "HS256",
+      subject: "user-42",
+      issuer: "https://identity.example.test",
+      audience: "chat-api",
+      expiresIn: "5m",
+      ...options,
+    },
+  );
 
 test("extracts only a well-formed Bearer token", () => {
   assert.equal(getBearerToken("Bearer abc.def.ghi"), "abc.def.ghi");
@@ -54,13 +59,19 @@ test("uses the signed app claim when no host app header is provided", () => {
 
 test("rejects a host application outside the signed/configured allowlist", () => {
   configure();
-  assert.throws(() => verifyChatToken(token(), { requestedApp: "inventory" }), { code: "CHAT_AUTH_APP_FORBIDDEN" });
+  assert.throws(() => verifyChatToken(token(), { requestedApp: "inventory" }), {
+    code: "CHAT_AUTH_APP_FORBIDDEN",
+  });
 });
 
 test("rejects tokens without tenant or jti claims", () => {
   configure();
-  assert.throws(() => verifyChatToken(token({ tenant_id: undefined })), { code: "CHAT_AUTH_TENANT_MISSING" });
-  assert.throws(() => verifyChatToken(token({ jti: undefined })), { code: "CHAT_AUTH_JTI_MISSING" });
+  assert.throws(() => verifyChatToken(token({ tenant_id: undefined })), {
+    code: "CHAT_AUTH_TENANT_MISSING",
+  });
+  assert.throws(() => verifyChatToken(token({ jti: undefined })), {
+    code: "CHAT_AUTH_JTI_MISSING",
+  });
 });
 
 test("rejects the wrong audience", () => {
@@ -70,5 +81,11 @@ test("rejects the wrong audience", () => {
 
 test("rejects tenant identifiers instead of lossy normalization", () => {
   configure();
-  assert.throws(() => verifyChatToken(token({ tenant_id: "company a" }), { requestedApp: "ticket_portal" }), { code: "CHAT_AUTH_TENANT_INVALID" });
+  assert.throws(
+    () =>
+      verifyChatToken(token({ tenant_id: "company a" }), {
+        requestedApp: "ticket_portal",
+      }),
+    { code: "CHAT_AUTH_TENANT_INVALID" },
+  );
 });

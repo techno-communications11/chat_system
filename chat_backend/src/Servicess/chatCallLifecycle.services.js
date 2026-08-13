@@ -1,7 +1,11 @@
 import ChatCall from "../modules/chatCall.module.js";
+import { Op } from "sequelize";
 
 export class ChatCallError extends Error {
-  constructor(message, { status = 400, code = "CHAT_CALL_INVALID", details } = {}) {
+  constructor(
+    message,
+    { status = 400, code = "CHAT_CALL_INVALID", details } = {},
+  ) {
     super(message);
     this.status = status;
     this.code = code;
@@ -16,8 +20,14 @@ const positiveNumber = (value, fallback) => {
 };
 const staleAfterMs = {
   ringing: positiveNumber(process.env.CHAT_CALL_RING_TIMEOUT_MS, 2 * 60 * 1000),
-  connecting: positiveNumber(process.env.CHAT_CALL_CONNECT_TIMEOUT_MS, 2 * 60 * 1000),
-  accepted: positiveNumber(process.env.CHAT_CALL_MAX_DURATION_MS, 4 * 60 * 60 * 1000),
+  connecting: positiveNumber(
+    process.env.CHAT_CALL_CONNECT_TIMEOUT_MS,
+    2 * 60 * 1000,
+  ),
+  accepted: positiveNumber(
+    process.env.CHAT_CALL_MAX_DURATION_MS,
+    4 * 60 * 60 * 1000,
+  ),
 };
 
 export const toCallPayload = (record, additions = {}) => ({
@@ -26,28 +36,33 @@ export const toCallPayload = (record, additions = {}) => ({
   type: record.type,
   status: record.status,
   provider: record.provider,
-  providerSpaceName: record.providerSpaceName || undefined,
-  callUrl: record.meetingUri || undefined,
-  meetingCode: record.meetingCode || undefined,
   startedAt: record.startedAt,
   endedAt: record.endedAt || undefined,
   startedBy: {
     id: String(record.startedByUserId),
     ...(record.metadata?.startedBy || {}),
   },
-  ...(record.metadata?.acceptedBy ? { acceptedBy: record.metadata.acceptedBy } : {}),
+  ...(record.metadata?.acceptedBy
+    ? { acceptedBy: record.metadata.acceptedBy }
+    : {}),
   ...additions,
 });
 
 // A browser can close before it sends the end event. Retire abandoned rows so
 // one lost event cannot permanently block every future call in a conversation.
-export const expireStaleCalls = async ({ appName, conversationId, now = new Date() }) => {
+export const expireStaleCalls = async ({
+  appName,
+  conversationId,
+  now = new Date(),
+}) => {
   const records = await ChatCall.findAll({
     where: { appName, conversationId, status: activeStatuses },
   });
 
   for (const record of records) {
-    const lastActivity = new Date(record.updatedAt || record.startedAt).getTime();
+    const lastActivity = new Date(
+      record.updatedAt || record.startedAt,
+    ).getTime();
     if (now.getTime() - lastActivity < staleAfterMs[record.status]) continue;
 
     const previousStatus = record.status;
@@ -65,7 +80,13 @@ export const expireStaleCalls = async ({ appName, conversationId, now = new Date
   }
 };
 
-export const createRingingCall = async ({ appName, conversationId, callId, type, actor }) => {
+export const createRingingCall = async ({
+  appName,
+  conversationId,
+  callId,
+  type,
+  actor,
+}) => {
   await expireStaleCalls({ appName, conversationId });
   const existing = await ChatCall.findOne({
     where: { appName, conversationId, status: activeStatuses },
@@ -94,52 +115,89 @@ export const createRingingCall = async ({ appName, conversationId, callId, type,
 
 const getRingingCall = async ({ appName, conversationId, callId }) => {
   const record = await ChatCall.findOne({
-    where: { appName, conversationId, callId: String(callId), status: "ringing" },
+    where: {
+      appName,
+      conversationId,
+      callId: String(callId),
+      status: "ringing",
+    },
   });
   if (!record) {
-    throw new ChatCallError("Ringing call not found", { status: 404, code: "CHAT_CALL_NOT_FOUND" });
+    throw new ChatCallError("Ringing call not found", {
+      status: 404,
+      code: "CHAT_CALL_NOT_FOUND",
+    });
   }
   return record;
 };
 
-export const respondToRingingCall = async ({ appName, conversationId, callId, actor, action }) => {
+export const respondToRingingCall = async ({
+  appName,
+  conversationId,
+  callId,
+  actor,
+  action,
+}) => {
   const record = await getRingingCall({ appName, conversationId, callId });
   if (String(record.startedByUserId) === String(actor.id)) {
-    throw new ChatCallError("The caller cannot accept or decline their own call", {
-      status: 403,
-      code: "CHAT_CALL_SELF_RESPONSE_FORBIDDEN",
-    });
+    throw new ChatCallError(
+      "The caller cannot accept or decline their own call",
+      {
+        status: 403,
+        code: "CHAT_CALL_SELF_RESPONSE_FORBIDDEN",
+      },
+    );
   }
 
   if (action === "decline") {
     const [updated] = await ChatCall.update(
-      { status: "declined", endedAt: new Date(), metadata: { ...(record.metadata || {}), declinedBy: actor } },
+      {
+        status: "declined",
+        endedAt: new Date(),
+        metadata: { ...(record.metadata || {}), declinedBy: actor },
+      },
       { where: { id: record.id, status: "ringing" } },
     );
-    if (!updated) throw new ChatCallError("This call was already answered", { status: 409, code: "CHAT_CALL_ALREADY_ANSWERED" });
+    if (!updated)
+      throw new ChatCallError("This call was already answered", {
+        status: 409,
+        code: "CHAT_CALL_ALREADY_ANSWERED",
+      });
     await record.reload();
     return toCallPayload(record, { declinedBy: actor });
   }
   if (action !== "accept") {
-    throw new ChatCallError("action must be accept or decline", { code: "CHAT_CALL_RESPONSE_INVALID" });
+    throw new ChatCallError("action must be accept or decline", {
+      code: "CHAT_CALL_RESPONSE_INVALID",
+    });
   }
 
   const [claimed] = await ChatCall.update(
     { status: "connecting" },
     { where: { id: record.id, status: "ringing" } },
   );
-  if (!claimed) throw new ChatCallError("This call was already answered", { status: 409, code: "CHAT_CALL_ALREADY_ANSWERED" });
+  if (!claimed)
+    throw new ChatCallError("This call was already answered", {
+      status: 409,
+      code: "CHAT_CALL_ALREADY_ANSWERED",
+    });
   await record.update({
     status: "accepted",
-    providerSpaceName: null,
-    meetingUri: null,
-    meetingCode: null,
-    metadata: { ...(record.metadata || {}), acceptedBy: actor, acceptedAt: new Date().toISOString() },
+    metadata: {
+      ...(record.metadata || {}),
+      acceptedBy: actor,
+      acceptedAt: new Date().toISOString(),
+    },
   });
   return toCallPayload(record);
 };
 
-export const markCallMissed = async ({ appName, conversationId, callId, unavailableUserIds = [] }) => {
+export const markCallMissed = async ({
+  appName,
+  conversationId,
+  callId,
+  unavailableUserIds = [],
+}) => {
   const record = await getRingingCall({ appName, conversationId, callId });
   await record.update({
     status: "missed",
@@ -153,14 +211,31 @@ export const markCallMissed = async ({ appName, conversationId, callId, unavaila
   return toCallPayload(record);
 };
 
-export const finishCall = async ({ appName, conversationId, callId, actorId }) => {
+export const finishCall = async ({
+  appName,
+  conversationId,
+  callId,
+  actorId,
+}) => {
   const record = await ChatCall.findOne({
-    where: { appName, conversationId, callId: String(callId), status: activeStatuses },
+    where: {
+      appName,
+      conversationId,
+      callId: String(callId),
+      status: { [Op.in]: activeStatuses },
+    },
   });
-  if (!record) throw new ChatCallError("Active call not found", { status: 404, code: "CHAT_CALL_NOT_FOUND" });
+  if (!record)
+    throw new ChatCallError("Active call not found", {
+      status: 404,
+      code: "CHAT_CALL_NOT_FOUND",
+    });
 
   if (record.status === "connecting") {
-    throw new ChatCallError("The call is currently being answered", { status: 409, code: "CHAT_CALL_CONNECTING" });
+    throw new ChatCallError("The call is currently being answered", {
+      status: 409,
+      code: "CHAT_CALL_CONNECTING",
+    });
   }
 
   if (record.status === "ringing") {

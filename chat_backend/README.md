@@ -57,12 +57,15 @@ API health check:
 http://localhost:4701/ping
 ```
 
+Interactive API documentation is available at `http://localhost:4600/api-docs`.
+The raw OpenAPI document is available at `http://localhost:4600/api-docs.json`.
+
 ## In-app calls
 
 Audio and video calls are handled by the chat backend and browser clients. The
 REST API stores the call lifecycle, and Socket.IO relays WebRTC signaling
-messages between conversation participants. No external meeting API or OAuth
-setup is required.
+messages between conversation participants. Calls use the internal WebRTC
+provider and do not depend on a meeting-platform integration.
 
 The frontend should use:
 

@@ -168,8 +168,30 @@ const changeColumnIfPresent = async (queryInterface, tableName, columnName, defi
   }
 };
 
+const removeColumnIfPresent = async (queryInterface, tableName, columnName) => {
+  const table = await queryInterface.describeTable(tableName);
+  if (table[columnName]) await queryInterface.removeColumn(tableName, columnName);
+};
+
+const addIndexIfMissing = async (queryInterface, tableName, fields, name) => {
+  const indexes = await queryInterface.showIndex(tableName);
+  if (!indexes.some((index) => index.name === name)) {
+    await queryInterface.addIndex(tableName, fields, { name });
+  }
+};
+
 const ensureSchemaCompatibility = async () => {
   const queryInterface = sequelize.getQueryInterface();
+
+  await addIndexIfMissing(queryInterface, "chat_identities", ["appName", "provider", "providerUserId"], "chat_identities_app_provider_user");
+  await addIndexIfMissing(queryInterface, "chat_conversations", ["appName", "lastMessageAt"], "chat_conversations_app_last_message");
+  await addIndexIfMissing(queryInterface, "chat_conversations", ["appName", "type"], "chat_conversations_app_type");
+  await addIndexIfMissing(queryInterface, "chat_conversation_participants", ["chatIdentityId", "conversationId"], "chat_participants_identity_conversation");
+  await addIndexIfMissing(queryInterface, "chat_messages", ["conversationId", "createdAt"], "chat_messages_conversation_created");
+  await addIndexIfMissing(queryInterface, "chat_messages", ["senderIdentityId", "createdAt"], "chat_messages_sender_created");
+  await addIndexIfMissing(queryInterface, "chat_message_reactions", ["chatIdentityId", "messageId"], "chat_reactions_identity_message");
+  await addIndexIfMissing(queryInterface, "chat_audit_logs", ["appName", "createdAt"], "chat_audit_app_created");
+  await addIndexIfMissing(queryInterface, "chat_audit_logs", ["appName", "action", "createdAt"], "chat_audit_app_action_created");
 
   await addColumnIfMissing(queryInterface, "chat_conversations", "metadata", {
     type: DataTypes.JSON,
@@ -187,7 +209,13 @@ const ensureSchemaCompatibility = async () => {
     type: DataTypes.JSON,
     allowNull: true,
   });
+  await addColumnIfMissing(queryInterface, "chat_messages", "deletedAt", { type: DataTypes.DATE, allowNull: true });
+  await addColumnIfMissing(queryInterface, "chat_messages", "deletedByIdentityId", { type: DataTypes.INTEGER, allowNull: true });
   await addColumnIfMissing(queryInterface, "chat_conversation_participants", "lastReadAt", {
+    type: DataTypes.DATE,
+    allowNull: true,
+  });
+  await addColumnIfMissing(queryInterface, "chat_conversation_participants", "clearedAt", {
     type: DataTypes.DATE,
     allowNull: true,
   });
@@ -219,14 +247,9 @@ const ensureSchemaCompatibility = async () => {
     type: DataTypes.JSON,
     allowNull: true,
   });
-  await changeColumnIfPresent(queryInterface, "chat_calls", "providerSpaceName", {
-    type: DataTypes.STRING,
-    allowNull: true,
-  });
-  await changeColumnIfPresent(queryInterface, "chat_calls", "meetingUri", {
-    type: DataTypes.TEXT,
-    allowNull: true,
-  });
+  await removeColumnIfPresent(queryInterface, "chat_calls", "providerSpaceName");
+  await removeColumnIfPresent(queryInterface, "chat_calls", "meetingUri");
+  await removeColumnIfPresent(queryInterface, "chat_calls", "meetingCode");
   // Expand first so legacy `started` rows can be mapped without MySQL enum
   // truncation, then remove the legacy value in the final definition.
   await changeColumnIfPresent(queryInterface, "chat_calls", "status", {

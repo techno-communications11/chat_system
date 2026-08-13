@@ -4,8 +4,8 @@ import { getAvailability } from "../chatHelpers";
 import PinglyMark from "../PinglyMark";
 
 const BRAND = "#6F2DA8";
-const BRAND_SOFT = "#ede9f8";
-const BRAND_TEXT = "#4a1e72";
+const BRAND_SOFT = "var(--chat-soft)";
+const BRAND_TEXT = "var(--chat-brand-text)";
 const SIDEBAR_BG = "#1a0a2e";
 
 function SidebarItem({ chat, active, onClick }) {
@@ -97,7 +97,11 @@ function SidebarItem({ chat, active, onClick }) {
   );
 }
 
-export function ChatWindowSidebar({ selectedChat, setSelectedChat, chats = [] }) {
+export function ChatWindowSidebar({
+  selectedChat,
+  setSelectedChat,
+  chats = [],
+}) {
   const channels = chats.filter((chat) => chat.type === "channel");
 
   return (
@@ -150,7 +154,7 @@ export function EmptyChatState() {
       height="100%"
       textAlign="center"
       px={3}
-      sx={{ bgcolor: "#fafafa" }}
+      sx={{ bgcolor: "background.paper" }}
     >
       <Box
         sx={{
@@ -169,7 +173,13 @@ export function EmptyChatState() {
       <Typography fontWeight={600} fontSize={17} mb={0.75}>
         Welcome to Pingly
       </Typography>
-      <Typography variant="body2" color="text.secondary" maxWidth={340} lineHeight={1.65} fontSize={13}>
+      <Typography
+        variant="body2"
+        color="text.secondary"
+        maxWidth={340}
+        lineHeight={1.65}
+        fontSize={13}
+      >
         Choose a person or channel from the sidebar to start a conversation.
       </Typography>
     </Box>
@@ -180,7 +190,12 @@ export function ReadyToSendState({ selectedChat }) {
   const isGroup = selectedChat.type === "channel";
 
   return (
-    <Box display="flex" alignItems="center" justifyContent="center" minHeight="100%">
+    <Box
+      display="flex"
+      alignItems="center"
+      justifyContent="center"
+      minHeight="100%"
+    >
       <Box textAlign="center" maxWidth={340}>
         <Avatar
           src={selectedChat.imageUrl}
@@ -192,16 +207,28 @@ export function ReadyToSendState({ selectedChat }) {
             borderRadius: "14px",
             fontSize: 20,
             fontWeight: 600,
-            bgcolor: selectedChat.type === "channel" ? BRAND_SOFT : "#e7f0ff",
+            bgcolor:
+              selectedChat.type === "channel"
+                ? BRAND_SOFT
+                : "var(--chat-blue-soft)",
             color: selectedChat.type === "channel" ? BRAND_TEXT : "#1a4fa0",
           }}
         >
-          {selectedChat.type === "channel" ? <GroupsIcon /> : selectedChat.title.charAt(0)}
+          {selectedChat.type === "channel" ? (
+            <GroupsIcon />
+          ) : (
+            selectedChat.title.charAt(0)
+          )}
         </Avatar>
         <Typography fontWeight={600} fontSize={15} mb={0.75}>
           {selectedChat.title}
         </Typography>
-        <Typography variant="body2" color="text.secondary" lineHeight={1.65} fontSize={13}>
+        <Typography
+          variant="body2"
+          color="text.secondary"
+          lineHeight={1.65}
+          fontSize={13}
+        >
           {isGroup
             ? "This is the beginning of this group. Send a message to everyone."
             : `This is the very beginning of your direct message history with ${selectedChat.title}. Say hello!`}
