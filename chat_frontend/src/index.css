@@ -23,7 +23,7 @@ body,
 
 body {
   font-family: Inter, Roboto, "SF Pro Display", "SF Pro Text", "Open Sans", Arial, sans-serif;
-  background: #f5f7fb;
+  background: #f7f8fc;
   transition: background-color 180ms ease, color 180ms ease;
 }
 
@@ -53,6 +53,14 @@ button,
 
 .chat-message-in { animation: chatMessageIn 180ms ease-out both; }
 
+.chat-emoji {
+  font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
+  font-weight: 400;
+  line-height: 1;
+  text-rendering: geometricPrecision;
+  -webkit-font-smoothing: antialiased;
+}
+
 @media (max-width: 767.98px) {
   html,
   body,
@@ -70,20 +78,28 @@ button,
 
 :root {
   --chat-surface: #ffffff;
-  --chat-soft: #eeebff;
-  --chat-subtle: #f1f3f9;
+  --chat-soft: #e9e7ff;
+  --chat-subtle: #f1f2fa;
   --chat-blue-soft: #e8f7f5;
-  --chat-brand-text: #6750e8;
+  --chat-brand-text: #6256d9;
+  --chat-rail: #211d3d;
+  --chat-canvas: #f8f9fd;
 }
 
 html[data-chat-theme="dark"] body {
-  background: #0f1220;
+  background: #171b2b;
 }
 
 html[data-chat-theme="dark"] {
   --chat-surface: #171b2b;
   --chat-soft: #29254c;
-  --chat-subtle: #20263a;
-  --chat-blue-soft: #173c3c;
+  --chat-subtle: #171b2b;
+  --chat-blue-soft: #171b2b;
   --chat-brand-text: #a99eff;
+  --chat-rail: #171b2b;
+  --chat-canvas: #171b2b;
+}
+
+.chat-shell {
+  background: var(--chat-canvas);
 }

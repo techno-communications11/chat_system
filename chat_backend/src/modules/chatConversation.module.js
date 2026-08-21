@@ -9,6 +9,11 @@ const ChatConversation = sequelize.define(
       autoIncrement: true,
       primaryKey: true,
     },
+    publicId: {
+      type: DataTypes.UUID,
+      allowNull: true,
+      unique: true,
+    },
     appName: {
       type: DataTypes.STRING,
       allowNull: false,

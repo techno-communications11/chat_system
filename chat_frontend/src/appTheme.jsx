@@ -28,7 +28,7 @@ export function AppThemeProvider({ children }) {
           secondary: { main: "#14b8a6" },
           divider: mode === "dark" ? "#2b3142" : "#e7eaf2",
           background: mode === "dark"
-            ? { default: "#0f1220", paper: "#171b2b" }
+            ? { default: "#171b2b", paper: "#171b2b" }
             : { default: "#f5f7fb", paper: "#ffffff" },
         },
         components: {

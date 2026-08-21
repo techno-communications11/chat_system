@@ -24,7 +24,6 @@ import { CHAT_APP_BASE_PATH } from "./chatRoutes";
 import PinglyMark from "./PinglyMark";
 import { useChatRealtime } from "./useChatRealtime";
 import {
-  requestChatNotificationPermission,
   showChatNotification,
 } from "./chatNotifications";
 import {
@@ -162,7 +161,6 @@ export default function ChatLauncher() {
 
   useEffect(() => {
     fetchChatData();
-    requestChatNotificationPermission().catch(() => {});
   }, [fetchChatData]);
 
   const totalUnreadCount = useMemo(

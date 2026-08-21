@@ -69,14 +69,25 @@ export default function EmojiPicker({ anchorEl, onClose, onSelect }) {
         {emojis.map(([emoji, name]) => (
           <IconButton
             key={emoji}
+            className="chat-emoji"
             size="small"
-            onClick={() => onSelect?.(emoji)}
+            onClick={() => {
+              onSelect?.(emoji);
+              closePicker();
+            }}
             title={name}
             sx={{
-              width: 34,
-              height: 34,
+              width: 36,
+              height: 36,
               borderRadius: 1,
-              fontSize: 21,
+              fontSize: 23,
+              lineHeight: 1,
+              fontFamily: '"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif',
+              fontWeight: 400,
+              color: "inherit",
+              textRendering: "geometricPrecision",
+              WebkitFontSmoothing: "antialiased",
+              transform: "translateZ(0)",
               "&:hover": { bgcolor: "var(--chat-soft)" },
             }}
           >

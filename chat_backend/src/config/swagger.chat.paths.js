@@ -16,6 +16,10 @@ export const chatPaths = {
       204: { description: "Status updated." },
     },
   ),
+  "/chat-service/me/settings": {
+    ...operation("get", "Get the current user's settings"),
+    ...operation("patch", "Update the current user's settings"),
+  },
   "/chat-service/me/avatar": operation(
     "patch",
     "Update the current user's avatar",
@@ -58,6 +62,10 @@ export const chatPaths = {
   "/chat-service/conversations/{chatId}/leave": operation(
     "post",
     "Leave a conversation",
+  ),
+  "/chat-service/conversations/{chatId}/transfer-ownership": operation(
+    "post",
+    "Transfer group ownership",
   ),
   "/chat-service/conversations/{chatId}/read": operation(
     "post",

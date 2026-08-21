@@ -5,6 +5,7 @@ import {
   Link,
   Popover,
   Stack,
+  IconButton,
   Tooltip,
   Typography,
 } from "@mui/material";
@@ -13,6 +14,7 @@ import DoneIcon from "@mui/icons-material/Done";
 import InsertDriveFileIcon from "@mui/icons-material/InsertDriveFile";
 import PushPinIcon from "@mui/icons-material/PushPin";
 import VideoCallIcon from "@mui/icons-material/VideoCall";
+import DownloadIcon from "@mui/icons-material/Download";
 import MessageActions from "./MessageActions";
 import { getBuddyName, getImageUrl } from "../chatHelpers";
 import { REACTION_OPTIONS } from "../../utils/constants";
@@ -222,24 +224,58 @@ export default function MessageRow({
                       <Link href={file.url} target="_blank" rel="noopener noreferrer" onClick={(event) => event.stopPropagation()}>
                         <Box component="img" src={file.url} alt={file.name || "Shared image"} loading="lazy" sx={{ display: "block", width: "100%", maxHeight: 280, objectFit: "cover", cursor: "pointer", "&:hover": { opacity: 0.9 } }} />
                       </Link>
-                      <Typography fontSize={11} color="text.secondary" noWrap sx={{ px: 1, py: 0.75 }}>
-                        {file.name}
-                      </Typography>
+                      <Box display="flex" alignItems="center" gap={0.5} sx={{ px: 1, py: 0.5 }}>
+                        <Typography fontSize={11} color="text.secondary" noWrap sx={{ minWidth: 0, flex: 1 }}>
+                          {file.name}
+                        </Typography>
+                        <Tooltip title="Download">
+                          <span>
+                            <IconButton
+                              component="a"
+                              href={file.url}
+                              download={file.name || true}
+                              size="small"
+                              disabled={!file.url}
+                              onClick={(event) => event.stopPropagation()}
+                              aria-label={`Download ${file.name || "image"}`}
+                            >
+                              <DownloadIcon sx={{ fontSize: 17 }} />
+                            </IconButton>
+                          </span>
+                        </Tooltip>
+                      </Box>
                     </Box>
                   );
                 }
 
                 return (
-                  <Box key={file.id} component={file.url ? "a" : "div"} href={file.url || undefined} target={file.url ? "_blank" : undefined} rel={file.url ? "noopener noreferrer" : undefined} onClick={(event) => event.stopPropagation()} display="flex" alignItems="center" gap={1} sx={{ textDecoration: "none", border: "0.5px solid", borderColor: "divider", borderRadius: 1, px: 1, py: 0.875, bgcolor: "background.paper", maxWidth: 360, cursor: file.url ? "pointer" : "default" }}>
+                  <Box key={file.id} display="flex" alignItems="center" gap={1} sx={{ border: "0.5px solid", borderColor: "divider", borderRadius: 1, px: 1, py: 0.875, bgcolor: "background.paper", maxWidth: 360 }}>
                     <Box sx={{ width: 34, height: 34, borderRadius: 1, bgcolor: BRAND_SOFT, color: BRAND_TEXT, display: "grid", placeItems: "center", flexShrink: 0 }}>
                       <InsertDriveFileIcon sx={{ fontSize: 18 }} />
                     </Box>
-                    <Box minWidth={0}>
-                      <Typography fontSize={13} fontWeight={600} color="text.primary" noWrap>{file.name}</Typography>
+                    <Box minWidth={0} flex={1}>
+                      <Link href={file.url || undefined} target={file.url ? "_blank" : undefined} rel="noopener noreferrer" onClick={(event) => event.stopPropagation()} underline="hover">
+                        <Typography fontSize={13} fontWeight={600} color="text.primary" noWrap>{file.name}</Typography>
+                      </Link>
                       <Typography fontSize={11} color="text.secondary" noWrap>
                         {[file.contentType || "Document", formatFileSize(file.size)].filter(Boolean).join(" - ")}
                       </Typography>
                     </Box>
+                    <Tooltip title="Download">
+                      <span>
+                        <IconButton
+                          component="a"
+                          href={file.url || undefined}
+                          download={file.name || true}
+                          size="small"
+                          disabled={!file.url}
+                          onClick={(event) => event.stopPropagation()}
+                          aria-label={`Download ${file.name || "file"}`}
+                        >
+                          <DownloadIcon sx={{ fontSize: 18 }} />
+                        </IconButton>
+                      </span>
+                    </Tooltip>
                   </Box>
                 );
               })()

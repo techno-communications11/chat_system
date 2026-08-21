@@ -400,6 +400,21 @@ const toUser = (identity, chatUser = null) => {
   const metadata = identity.metadata || {};
   const presence = metadata.presence || metadata.status || null;
   const avatarUrl = signS3UrlIfNeeded(chatUser?.avatarUrl || metadata.avatarUrl || null);
+  const name = identity.providerDisplayName || chatUser?.display_name || chatUser?.name || identity.appUserEmail || String(identity.appUserId);
+  const profile = {
+    id: String(identity.appUserId),
+    email: identity.appUserEmail || chatUser?.email || null,
+    username: chatUser?.username || metadata.username || null,
+    name,
+    displayName: name,
+    avatarUrl,
+    status: presence || chatUser?.status || null,
+    presence: presence || chatUser?.presence || null,
+    lastSeenAt: chatUser?.lastSeenAt || null,
+    role: chatUser?.role || null,
+    roles: Array.isArray(chatUser?.roles) ? chatUser.roles : [],
+    metadata: chatUser?.metadata || metadata,
+  };
 
   return {
     id: String(identity.appUserId),
@@ -407,8 +422,8 @@ const toUser = (identity, chatUser = null) => {
     chatIdentityId: identity.id,
     email: identity.appUserEmail,
     email_id: identity.appUserEmail,
-    name: identity.providerDisplayName || identity.appUserEmail || String(identity.appUserId),
-    display_name: identity.providerDisplayName || identity.appUserEmail || String(identity.appUserId),
+    name,
+    display_name: name,
     avatarUrl,
     imageUrl: avatarUrl,
     provider,
@@ -420,6 +435,7 @@ const toUser = (identity, chatUser = null) => {
     },
     createdAt: identity.createdAt,
     updatedAt: identity.updatedAt,
+    profile,
   };
 };
 
@@ -499,12 +515,18 @@ const toConversation = async (conversation, currentIdentityId) => {
     senderIdentityId: { [Op.ne]: currentIdentityId },
   };
 
-  if (currentParticipant?.lastReadAt) {
-    unreadWhere.createdAt = { [Op.gt]: currentParticipant.lastReadAt };
-  }
+  const unreadAfter = [currentParticipant?.lastReadAt, currentParticipant?.clearedAt]
+    .filter(Boolean)
+    .reduce(
+      (latest, timestamp) =>
+        !latest || new Date(timestamp).getTime() > new Date(latest).getTime()
+          ? timestamp
+          : latest,
+      null,
+    );
 
-  if (currentParticipant?.clearedAt) {
-    unreadWhere.createdAt = { [Op.gt]: currentParticipant.clearedAt };
+  if (unreadAfter) {
+    unreadWhere.createdAt = { [Op.gt]: unreadAfter };
   }
 
   const visibleLastMessage = currentParticipant?.clearedAt && lastMessage &&
@@ -515,8 +537,8 @@ const toConversation = async (conversation, currentIdentityId) => {
   const unreadCount = await ChatMessage.count({ where: unreadWhere });
 
   return {
-    id: String(conversation.id),
-    chat_id: String(conversation.id),
+    id: String(conversation.publicId || conversation.id),
+    chat_id: String(conversation.publicId || conversation.id),
     type: conversation.type,
     isDirect: conversation.type === "direct",
     isGroup: conversation.type === "group",
@@ -550,10 +572,10 @@ const toChannel = (channel) => ({
 });
 
 const toGroup = (group) => ({
-  id: String(group.id),
+  id: String(group.publicId || group.id),
   name: group.name,
   description: group.description,
-  conversationId: String(group.conversationId),
+  conversationId: String(group.conversation?.publicId || group.conversationId),
   ownerUserId: String(group.ownerUserId),
   createdAt: group.createdAt,
   updatedAt: group.updatedAt,
@@ -744,18 +766,15 @@ const findOrCreateUserIdentity = async ({ actor, appName, userId, email, display
 };
 
 const getConversationForMember = async ({ chatId, identityId, appName }) => {
-  const participant = await ChatConversationParticipant.findOne({
-    where: {
-      conversationId: chatId,
-      chatIdentityId: identityId,
-    },
-    include: [
-      {
-        model: ChatConversation,
-        as: "conversation",
-        where: appName ? { appName: normalizeAppName(appName) } : undefined,
-      },
-    ],
+  const requestedId = String(chatId || "");
+  const conversationWhere = {
+    ...(appName ? { appName: normalizeAppName(appName) } : {}),
+    ...(requestedId.includes("-") ? { publicId: requestedId } : { id: requestedId }),
+  };
+  const conversation = await ChatConversation.findOne({ where: conversationWhere });
+  const participant = conversation && await ChatConversationParticipant.findOne({
+    where: { conversationId: conversation.id, chatIdentityId: identityId },
+    include: [{ model: ChatConversation, as: "conversation" }],
   });
 
   if (!participant?.conversation) {
@@ -769,18 +788,15 @@ const getConversationForMember = async ({ chatId, identityId, appName }) => {
 };
 
 const getParticipantForMember = async ({ chatId, identityId, appName }) => {
-  const participant = await ChatConversationParticipant.findOne({
-    where: {
-      conversationId: chatId,
-      chatIdentityId: identityId,
-    },
-    include: [
-      {
-        model: ChatConversation,
-        as: "conversation",
-        where: appName ? { appName: normalizeAppName(appName) } : undefined,
-      },
-    ],
+  const requestedId = String(chatId || "");
+  const conversationWhere = {
+    ...(appName ? { appName: normalizeAppName(appName) } : {}),
+    ...(requestedId.includes("-") ? { publicId: requestedId } : { id: requestedId }),
+  };
+  const conversation = await ChatConversation.findOne({ where: conversationWhere });
+  const participant = conversation && await ChatConversationParticipant.findOne({
+    where: { conversationId: conversation.id, chatIdentityId: identityId },
+    include: [{ model: ChatConversation, as: "conversation" }],
   });
 
   if (!participant?.conversation) {
@@ -824,6 +840,7 @@ const ensureDirectConversation = async ({ actorIdentity, targetIdentity }) => {
       appName: actorIdentity.appName,
       type: "direct",
       directKey,
+      publicId: crypto.randomUUID(),
     },
   });
 
@@ -913,10 +930,7 @@ export const getChatUsers = async ({ actor, query = {} }) => {
 
   for (const knownIdentity of knownIdentities) {
     const key = String(knownIdentity.appUserId);
-
-    if (!usersByKey.has(key)) {
-      usersByKey.set(key, toUser(knownIdentity));
-    }
+    usersByKey.set(key, toUser(knownIdentity, usersByKey.get(key) || null));
   }
 
   await writeChatAuditLog({
@@ -1182,16 +1196,82 @@ export const leaveChatConversation = async ({ actor, chatId }) => {
   };
 };
 
+export const transferGroupOwnership = async ({ actor, chatId, userId }) => {
+  const identity = await ensureLocalIdentity(actor);
+  const participant = await getParticipantForMember({
+    chatId,
+    identityId: identity.id,
+    appName: actor.appName,
+  });
+  const conversation = participant.conversation;
+
+  if (conversation.type !== "group") {
+    throw new ChatServiceError("Ownership can only be transferred for groups", {
+      status: 400,
+      code: "CHAT_NOT_GROUP_CONVERSATION",
+    });
+  }
+
+  assertGroupOwner(participant);
+  assertString(userId, "userId");
+
+  const targetIdentity = await ChatIdentity.findOne({
+    where: {
+      appName: actor.appName,
+      provider,
+      appUserId: String(userId),
+    },
+  });
+  const targetParticipant = targetIdentity && await ChatConversationParticipant.findOne({
+    where: {
+      conversationId: conversation.id,
+      chatIdentityId: targetIdentity.id,
+    },
+  });
+
+  if (!targetIdentity || !targetParticipant) {
+    throw new ChatServiceError("The new owner must be a group member", {
+      status: 400,
+      code: "CHAT_OWNER_MUST_BE_MEMBER",
+    });
+  }
+
+  await ChatConversationParticipant.update(
+    { role: "member" },
+    { where: { conversationId: conversation.id, chatIdentityId: identity.id } },
+  );
+  await targetParticipant.update({ role: "owner" });
+
+  const group = await ChatGroup.findOne({ where: { conversationId: conversation.id } });
+  if (group) await group.update({ ownerUserId: String(userId) });
+
+  await writeChatAuditLog({
+    appName: actor.appName,
+    appUserId: actor.appUserId,
+    provider,
+    action: "transfer_group_ownership",
+    targetUserId: String(userId),
+    targetChatId: conversation.id,
+  });
+
+  return {
+    transferred: true,
+    ownerUserId: String(userId),
+    conversation: await toConversation(conversation, identity.id),
+  };
+};
+
 export const markChatConversationRead = async ({ actor, chatId }) => {
   const identity = await ensureLocalIdentity(actor);
   const conversation = await getConversationForMember({ chatId, identityId: identity.id, appName: actor.appName });
+  const conversationId = conversation.id;
   const readAt = new Date();
 
   await ChatConversationParticipant.update(
     { lastReadAt: readAt },
     {
       where: {
-        conversationId: chatId,
+        conversationId,
         chatIdentityId: identity.id,
       },
     },
@@ -1413,9 +1493,11 @@ export const createGroupConversation = async ({ actor, title, userIds = [] }) =>
     appName: actor.appName,
     type: "group",
     title: String(title || "Group chat").trim(),
+    publicId: crypto.randomUUID(),
   });
   const group = await ChatGroup.create({
     appName: actor.appName,
+    publicId: crypto.randomUUID(),
     name: conversation.title,
     description: null,
     ownerUserId: String(actorIdentity.appUserId),
@@ -1507,6 +1589,7 @@ export const createChatChannel = async ({
     appName: actor.appName,
     type: "group",
     title: `#${slug}`,
+    publicId: crypto.randomUUID(),
   });
   const channel = await ChatChannel.create({
     appName: actor.appName,
@@ -1634,9 +1717,10 @@ export const joinChatChannel = async ({ actor, channelId }) => {
 export const getChatMessages = async ({ actor, chatId, query = {} }) => {
   const identity = await ensureLocalIdentity(actor);
   const participant = await getParticipantForMember({ chatId, identityId: identity.id, appName: actor.appName });
+  const conversationId = participant.conversation.id;
 
   const limit = normalizeLimit(query.limit, 50, 100);
-  const where = { conversationId: chatId };
+  const where = { conversationId };
   const createdAtFilters = [];
 
   if (participant.clearedAt) {
@@ -1647,7 +1731,7 @@ export const getChatMessages = async ({ actor, chatId, query = {} }) => {
     const cursorMessage = await ChatMessage.findOne({
       where: {
         id: query.before,
-        conversationId: chatId,
+        conversationId,
       },
     });
 
@@ -1674,7 +1758,7 @@ export const getChatMessages = async ({ actor, chatId, query = {} }) => {
   });
 
   const participants = await ChatConversationParticipant.findAll({
-    where: { conversationId: chatId },
+    where: { conversationId },
     attributes: ["chatIdentityId", "lastReadAt"],
   });
   const serializeMessage = (message) => {
@@ -1698,7 +1782,7 @@ export const getChatMessages = async ({ actor, chatId, query = {} }) => {
     { lastReadAt: new Date() },
     {
       where: {
-        conversationId: chatId,
+        conversationId,
         chatIdentityId: identity.id,
       },
     },
@@ -1774,6 +1858,7 @@ export const editChatMessage = async ({ actor, chatId, messageId, text }) => {
     identityId: identity.id,
     appName: actor.appName,
   });
+  const conversationId = conversation.id;
   assertString(messageId, "messageId");
   assertString(text, "text");
 
@@ -1963,8 +2048,25 @@ export const startChatCall = async ({ actor, chatId, type }) => {
         participant.identity.metadata?.presence || participant.identity.metadata?.status || "online",
       ).toLowerCase();
       const connected = await isUserConnected(actor.appName, userId);
-      const canRing = connected && !["busy", "dnd", "offline"].includes(presence);
-      return { userId, presence, connected, canRing };
+      const memberConversations = await ChatConversationParticipant.findAll({
+        where: { chatIdentityId: participant.chatIdentityId },
+        attributes: ["conversationId"],
+      });
+      const activeCall = memberConversations.length > 0
+        ? await ChatCall.findOne({
+            where: {
+              appName: actor.appName,
+              conversationId: {
+                [Op.in]: memberConversations.map((item) => item.conversationId),
+              },
+              status: { [Op.in]: ["ringing", "connecting", "accepted"] },
+            },
+            attributes: ["id"],
+          })
+        : null;
+      const inAnotherCall = Boolean(activeCall);
+      const canRing = connected && !inAnotherCall && !["busy", "dnd", "offline"].includes(presence);
+      return { userId, presence, connected, inAnotherCall, canRing };
     }),
   );
   const ringingUserIds = deliveryStates.filter((item) => item.canRing).map((item) => item.userId);
@@ -2231,13 +2333,14 @@ export const addChatReaction = async ({ actor, chatId, messageId, emoji }) => {
     identityId: identity.id,
     appName: actor.appName,
   });
+  const conversationId = conversation.id;
   assertString(messageId, "messageId");
   assertString(emoji, "emoji");
 
   const message = await ChatMessage.findOne({
     where: {
       id: messageId,
-      conversationId: chatId,
+        conversationId,
     },
   });
 

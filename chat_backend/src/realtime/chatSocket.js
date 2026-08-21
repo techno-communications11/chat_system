@@ -1,5 +1,6 @@
 import { Server } from "socket.io";
 import crypto from "crypto";
+import { Op } from "sequelize";
 import { verifyChatToken } from "../auth/chatAuth.js";
 import ChatIdentity from "../modules/chatIdentity.module.js";
 import ChatConversation from "../modules/chatConversation.module.js";
@@ -8,6 +9,27 @@ import ChatConversationParticipant from "../modules/chatConversationParticipant.
 let io = null;
 const tenantRoom = (tenantId) => crypto.createHash("sha256").update(String(tenantId)).digest("hex").slice(0, 32);
 const room = (tenantId, suffix) => `tenant:${tenantRoom(tenantId)}:${suffix}`;
+
+const resolveConversation = async ({ tenantId, conversationId }) => {
+  const requestedId = String(conversationId || "");
+  if (!requestedId) return null;
+
+  return ChatConversation.findOne({
+    where: {
+      appName: tenantId,
+      [Op.or]: [
+        { publicId: requestedId },
+        { id: Number(requestedId) || 0 },
+      ],
+    },
+    attributes: ["id", "publicId"],
+  });
+};
+
+const getPublicConversationId = async (appName, conversationId) => {
+  const conversation = await resolveConversation({ tenantId: appName, conversationId });
+  return String(conversation?.publicId || conversationId);
+};
 
 const getTokenFromSocket = (socket) =>
   socket.handshake.auth?.token ||
@@ -20,11 +42,13 @@ const canAccessConversation = async ({ tenantId, userId, conversationId }) => {
   });
   if (!identity) return false;
 
+  const conversation = await resolveConversation({ tenantId, conversationId });
+  if (!conversation) return false;
+
   const membership = await ChatConversationParticipant.findOne({
-    where: { conversationId, chatIdentityId: identity.id },
-    include: [{ model: ChatConversation, as: "conversation", where: { appName: tenantId }, attributes: ["id"] }],
+    where: { conversationId: conversation.id, chatIdentityId: identity.id },
   });
-  return Boolean(membership?.conversation);
+  return Boolean(membership);
 };
 
 export const initChatSocket = (httpServer, allowedOrigins) => {
@@ -255,12 +279,13 @@ export const notifyConversationMessage = async ({
   message,
   participantUserIds = [],
 }) => {
+  const publicChatId = await getPublicConversationId(appName, conversationId);
   const payload = {
-    chatId: String(conversationId),
+    chatId: publicChatId,
     message,
   };
 
-  emitToConversation(appName, conversationId, "message:new", payload);
+  emitToConversation(appName, publicChatId, "message:new", payload);
 
   for (const userId of participantUserIds) {
     emitToUser(appName, userId, "message:new", payload);
@@ -273,12 +298,13 @@ export const notifyConversationMessageUpdate = async ({
   message,
   participantUserIds = [],
 }) => {
+  const publicChatId = await getPublicConversationId(appName, conversationId);
   const payload = {
-    chatId: String(conversationId),
+    chatId: publicChatId,
     message,
   };
 
-  emitToConversation(appName, conversationId, "message:updated", payload);
+  emitToConversation(appName, publicChatId, "message:updated", payload);
 
   for (const userId of participantUserIds) {
     emitToUser(appName, userId, "message:updated", payload);
@@ -294,8 +320,9 @@ export const notifyConversationRead = async ({
   isDirect = false,
   readStates = [],
 }) => {
+  const publicChatId = await getPublicConversationId(appName, conversationId);
   const payload = {
-    chatId: String(conversationId),
+    chatId: String(publicChatId),
     userId: String(userId),
     readAt,
     isDirect,
@@ -306,15 +333,16 @@ export const notifyConversationRead = async ({
   }
 };
 
-export const notifyMessageReaction = ({
+export const notifyMessageReaction = async ({
   appName = "chat_system",
   conversationId,
   targetUserId,
   reaction,
   message,
 }) => {
+  const publicChatId = await getPublicConversationId(appName, conversationId);
   emitToUser(appName, targetUserId, "reaction:added", {
-    chatId: String(conversationId),
+    chatId: publicChatId,
     reaction,
     message,
   });
@@ -327,9 +355,12 @@ export const notifyConversationCall = async ({
   participantUserIds = [],
   event = "call:started",
 }) => {
+  const publicChatId = await getPublicConversationId(appName, conversationId);
   const payload = {
-    chatId: String(conversationId),
-    call,
+    chatId: publicChatId,
+    call: call
+      ? { ...call, chatId: publicChatId, chat_id: publicChatId }
+      : call,
   };
 
   // Participant user rooms reach callers even when that conversation is not

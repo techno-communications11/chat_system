@@ -51,7 +51,7 @@ export const normalizeDirectoryUser = (user, appName) => {
 
   if (!id) return null;
 
-  return {
+  const normalizedUser = {
     ...user,
     id,
     user_id: id,
@@ -65,6 +65,23 @@ export const normalizeDirectoryUser = (user, appName) => {
     role: user?.role || user?.userRole || user?.type || "member",
     roles: user?.roles || (user?.role ? [user.role] : []),
     provider: appName,
+  };
+
+  return {
+    ...normalizedUser,
+    profile: {
+      id,
+      email: normalizedUser.email,
+      username: normalizedUser.username,
+      name: normalizedUser.name,
+      displayName: normalizedUser.displayName,
+      avatarUrl: normalizedUser.avatarUrl || null,
+      status: normalizedUser.status || null,
+      presence: normalizedUser.presence || normalizedUser.status || null,
+      role: normalizedUser.role,
+      roles: normalizedUser.roles,
+      metadata: normalizedUser.metadata || {},
+    },
   };
 };
 

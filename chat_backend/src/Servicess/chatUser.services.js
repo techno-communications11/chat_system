@@ -40,6 +40,20 @@ const toPublicUser = (user) => {
   const plainUser = user.get ? user.get({ plain: true }) : user;
   const roles = plainUser.roles || [];
   const roleNames = roles.map((role) => role.name);
+  const profile = {
+    id: String(plainUser.id),
+    email: plainUser.email,
+    username: plainUser.username,
+    name: plainUser.displayName,
+    displayName: plainUser.displayName,
+    avatarUrl: plainUser.avatarUrl,
+    status: plainUser.status,
+    presence: plainUser.presence,
+    lastSeenAt: plainUser.lastSeenAt,
+    role: roleNames[0] || "member",
+    roles: roleNames,
+    metadata: plainUser.metadata || {},
+  };
 
   return {
     id: String(plainUser.id),
@@ -58,6 +72,7 @@ const toPublicUser = (user) => {
     provider: "local_chat",
     createdAt: plainUser.createdAt,
     updatedAt: plainUser.updatedAt,
+    profile,
   };
 };
 
@@ -127,6 +142,43 @@ export const getChatDirectoryUserById = async (userId) => {
   });
 
   return user ? toPublicUser(user) : null;
+};
+
+export const getChatUserSettings = async ({ userId }) => {
+  const user = await ChatUser.findByPk(Number(userId) || 0);
+  const settings = user?.metadata?.settings || {};
+
+  return {
+    desktopNotifications: settings.desktopNotifications === true,
+  };
+};
+
+export const updateChatUserSettings = async ({ userId, settings = {} }) => {
+  const user = await ChatUser.findByPk(Number(userId) || 0);
+  if (!user) {
+    const error = new Error("Chat user not found");
+    error.status = 404;
+    error.code = "CHAT_USER_NOT_FOUND";
+    throw error;
+  }
+
+  const nextSettings = {
+    ...(user.metadata?.settings || {}),
+    ...(typeof settings.desktopNotifications === "boolean"
+      ? { desktopNotifications: settings.desktopNotifications }
+      : {}),
+  };
+
+  await user.update({
+    metadata: {
+      ...(user.metadata || {}),
+      settings: nextSettings,
+    },
+  });
+
+  return {
+    desktopNotifications: nextSettings.desktopNotifications === true,
+  };
 };
 
 export const registerChatUser = async ({

@@ -15,7 +15,14 @@ const withPersonEmail = (params = {}) => {
 export const loginChatService = (payload) =>
   api.post("/chat-service/auth/login", payload);
 
-export const getChatStatusService = () => api.get("/chat-service/me", getChatHeaders());
+export const getChatStatusService = () =>
+  api.get("/chat-service/me", getChatHeaders());
+
+export const getChatSettingsService = () =>
+  api.get("/chat-service/me/settings", getChatHeaders());
+
+export const updateChatSettingsService = (settings) =>
+  api.patch("/chat-service/me/settings", settings, getChatHeaders());
 
 export const updateChatStatusService = (presence) =>
   api.patch("/chat-service/me/status", { presence }, getChatHeaders());
@@ -31,6 +38,9 @@ export const updateChatAvatarService = (file) =>
       "x-file-size": String(file.size || 0),
     },
   });
+
+export const updateChatAvatarUrlService = (avatarUrl) =>
+  api.patch("/chat-service/me/avatar", { avatarUrl }, getChatHeaders());
 
 export const getChatUsersService = (params = {}) =>
   api.get("/chat-service/users", {
@@ -52,7 +62,11 @@ export const openDirectChatService = (userId) =>
   );
 
 export const createGroupChatService = ({ title, userIds }) =>
-  api.post("/chat-service/conversations/groups", { title, userIds }, getChatHeaders());
+  api.post(
+    "/chat-service/conversations/groups",
+    { title, userIds },
+    getChatHeaders(),
+  );
 
 export const addGroupMembersService = (chatId, userIds) =>
   api.post(
@@ -68,11 +82,21 @@ export const leaveGroupConversationService = (chatId) =>
     getChatHeaders(),
   );
 
+export const transferGroupOwnershipService = (chatId, userId) =>
+  api.post(
+    `/chat-service/conversations/${encodeURIComponent(chatId)}/transfer-ownership`,
+    { userId },
+    getChatHeaders(),
+  );
+
 export const getChatMessagesService = (chatId, params = {}) =>
-  api.get(`/chat-service/conversations/${encodeURIComponent(chatId)}/messages`, {
-    ...getChatHeaders(),
-    params,
-  });
+  api.get(
+    `/chat-service/conversations/${encodeURIComponent(chatId)}/messages`,
+    {
+      ...getChatHeaders(),
+      params,
+    },
+  );
 
 export const clearChatHistoryService = (chatId) =>
   api.delete(

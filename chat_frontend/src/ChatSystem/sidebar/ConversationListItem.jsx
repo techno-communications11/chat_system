@@ -27,14 +27,12 @@ import {
 function PresenceAvatar({ item, title, isChannel }) {
   const availability = getAvailability(item);
   const isDirect = isDirectConversation(item, isChannel);
-  const participants = Array.isArray(item?.participants) ? item.participants : [];
   const imageUrl =
     getImageUrl(item) ||
     getImageUrl(item?.user) ||
     getImageUrl(item?.profile) ||
     getImageUrl(item?.participant) ||
-    getImageUrl(item?.raw) ||
-    getImageUrl(participants[0]);
+    getImageUrl(item?.raw);
 
   if (!isDirect) {
     return (
@@ -115,13 +113,13 @@ export default function ConversationListItem({
       sx={{
         mb: 0.25,
         cursor: disabled ? "not-allowed" : "pointer",
-        borderRadius: 1,
-          bgcolor: selected ? "action.selected" : "transparent",
+        borderRadius: 2.5,
+        bgcolor: selected ? "var(--chat-soft)" : "transparent",
         opacity: disabled ? 0.58 : 1,
         transition: "background-color 120ms ease, border-color 120ms ease",
-        borderLeft: selected ? "3px solid #6F2DA8" : "3px solid transparent",
+        borderLeft: "0 solid transparent",
         "&:hover": {
-          bgcolor: disabled ? "transparent" : selected ? "action.selected" : "action.hover",
+          bgcolor: disabled ? "transparent" : selected ? "var(--chat-soft)" : "rgba(233,231,255,.42)",
         },
       }}
     >
@@ -131,7 +129,7 @@ export default function ConversationListItem({
           alignItems: "center",
           gap: 1.25,
           px: 1,
-          py: 0.9,
+          py: 1,
           minWidth: 0,
         }}
       >
@@ -142,7 +140,7 @@ export default function ConversationListItem({
               fontWeight={unreadCount > 0 ? 800 : 700}
               noWrap
               flex={1}
-              fontSize={15}
+              fontSize={14}
             >
               {title}
             </Typography>
@@ -159,7 +157,7 @@ export default function ConversationListItem({
             <Typography
               variant="body2"
               color={unreadCount > 0 ? "text.primary" : "text.secondary"}
-              fontWeight={unreadCount > 0 ? 700 : 400}
+              fontWeight={unreadCount > 0 ? 600 : 400}
               noWrap
               flex={1}
               minWidth={0}

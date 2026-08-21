@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   Avatar,
   Box,
@@ -20,6 +21,7 @@ import NotificationsActiveIcon from "@mui/icons-material/NotificationsActive";
 import NotificationsOffIcon from "@mui/icons-material/NotificationsOff";
 import AttachFileIcon from "@mui/icons-material/AttachFile";
 import DeleteSweepIcon from "@mui/icons-material/DeleteSweep";
+import SwapHorizIcon from "@mui/icons-material/SwapHoriz";
 import {
   getBuddyEmail,
   getBuddyName,
@@ -42,6 +44,7 @@ export default function GroupActions({
   onCloseLeaveConfirm,
   onCloseMenu,
   onLeaveGroup,
+  onTransferOwnership,
   onOpenInfo,
   onOpenMedia,
   onClearChat,
@@ -50,6 +53,7 @@ export default function GroupActions({
   open,
   selectedChat,
 }) {
+  const [transferOpen, setTransferOpen] = useState(false);
   if (selectedChat?.type !== "channel") return null;
 
   return (
@@ -72,7 +76,13 @@ export default function GroupActions({
         }}
       >
         <List dense disablePadding>
-          <ListItemButton onClick={onOpenInfo} sx={{ gap: 1.25, py: 1 }}>
+          <ListItemButton
+            onClick={() => {
+              onCloseMenu?.();
+              onOpenInfo?.();
+            }}
+            sx={{ gap: 1.25, py: 1 }}
+          >
             <InfoIcon sx={{ fontSize: 18, color: "text.secondary" }} />
             <ListItemText
               primary="Group info"
@@ -104,9 +114,22 @@ export default function GroupActions({
             <DeleteSweepIcon sx={{ fontSize: 18, color: "error.main" }} />
             <ListItemText primary="Clear chat" primaryTypographyProps={{ fontSize: 13.5, fontWeight: 600, color: "error.main" }} />
           </ListItemButton>
+          <ListItemButton
+            onClick={() => {
+              onCloseMenu?.();
+              setTransferOpen(true);
+            }}
+            sx={{ gap: 1.25, py: 1 }}
+          >
+            <SwapHorizIcon sx={{ fontSize: 18, color: "text.secondary" }} />
+            <ListItemText primary="Transfer ownership" primaryTypographyProps={{ fontSize: 13.5, fontWeight: 600 }} />
+          </ListItemButton>
           <Divider />
           <ListItemButton
-            onClick={onOpenLeaveConfirm}
+            onClick={() => {
+              onCloseMenu?.();
+              onOpenLeaveConfirm?.();
+            }}
             sx={{ gap: 1.25, py: 1 }}
           >
             <ExitToAppIcon sx={{ fontSize: 18, color: "#d32f2f" }} />
@@ -193,6 +216,43 @@ export default function GroupActions({
         </DialogContent>
         <DialogActions>
           <Button onClick={onCloseInfo}>Close</Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={transferOpen} onClose={() => setTransferOpen(false)} fullWidth maxWidth="xs">
+        <DialogTitle>Transfer ownership</DialogTitle>
+        <DialogContent dividers>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1.25 }}>
+            Choose a group member to become the new owner. You will remain a member.
+          </Typography>
+          <List dense disablePadding>
+            {groupMembers
+              .filter((member) => !isSamePerson(member, currentUser))
+              .map((member) => {
+                const memberId = getBuddySendId(member) || getBuddyEmail(member);
+                return (
+                  <ListItemButton
+                    key={memberId || getBuddyName(member)}
+                    onClick={async () => {
+                      try {
+                        await onTransferOwnership?.(selectedChat.id, memberId);
+                        setTransferOpen(false);
+                      } catch {
+                        // The parent displays the request error.
+                      }
+                    }}
+                  >
+                    <Avatar src={getImageUrl(member)} sx={{ width: 34, height: 34, mr: 1.25, bgcolor: BRAND_SOFT, color: BRAND_TEXT }}>
+                      {getBuddyName(member).charAt(0)}
+                    </Avatar>
+                    <ListItemText primary={getBuddyName(member)} secondary={getBuddyEmail(member)} />
+                  </ListItemButton>
+                );
+              })}
+          </List>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setTransferOpen(false)}>Cancel</Button>
         </DialogActions>
       </Dialog>
 

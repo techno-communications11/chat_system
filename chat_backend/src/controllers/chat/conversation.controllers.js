@@ -11,6 +11,7 @@ import {
   listChatGroups,
   markChatConversationRead,
   removeGroupConversationMember,
+  transferGroupOwnership,
   updateGroupConversation,
 } from "../../Servicess/chat/conversation.services.js";
 import { actorFrom, handleRequest, sendSuccess } from "./controller.helpers.js";
@@ -119,6 +120,17 @@ export const leaveConversation = handleRequest(async (req, res) =>
     await leaveChatConversation({
       actor: actorFrom(req),
       chatId: req.params.chatId,
+    }),
+  ),
+);
+export const transferOwnership = handleRequest(async (req, res) =>
+  sendSuccess(
+    res,
+    "Group ownership transferred",
+    await transferGroupOwnership({
+      actor: actorFrom(req),
+      chatId: req.params.chatId,
+      userId: req.body?.userId || req.body?.user_id,
     }),
   ),
 );

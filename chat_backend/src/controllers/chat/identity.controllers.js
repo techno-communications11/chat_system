@@ -1,8 +1,10 @@
 import {
   getChatConnectionStatus,
   getChatUserProfile,
+  getChatUserSettings,
   getChatUsers,
   updateChatAvatar,
+  updateChatUserSettings,
   updateChatPresence,
 } from "../../Servicess/chat/identity.services.js";
 import { createChatRole, listChatRoles } from "../../Servicess/chat/identity.services.js";
@@ -45,6 +47,25 @@ export const updateChatStatus = handleRequest(async (req, res) => {
   });
   return sendSuccess(res, "Chat status updated", data);
 });
+
+export const getChatSettings = handleRequest(async (req, res) =>
+  sendSuccess(
+    res,
+    "Chat settings fetched",
+    await getChatUserSettings({ userId: actorFrom(req).appUserId }),
+  ),
+);
+
+export const updateChatSettings = handleRequest(async (req, res) =>
+  sendSuccess(
+    res,
+    "Chat settings updated",
+    await updateChatUserSettings({
+      userId: actorFrom(req).appUserId,
+      settings: req.body || {},
+    }),
+  ),
+);
 
 export const updateChatAvatarController = handleRequest(async (req, res) => {
   const contentType = req.headers["content-type"];

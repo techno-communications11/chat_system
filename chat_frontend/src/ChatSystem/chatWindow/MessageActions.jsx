@@ -1,6 +1,5 @@
 import {
   Box,
-  Checkbox,
   IconButton,
   List,
   ListItemButton,
@@ -109,11 +108,6 @@ export default function MessageActions({
             }}
             sx={{ gap: 1.25, py: 1 }}
           >
-            <Checkbox
-              checked={selectionMode || selected}
-              tabIndex={-1}
-              disableRipple
-            />
             <ListItemText
               primary="Select"
               primaryTypographyProps={{ fontSize: 13.5, fontWeight: 500 }}

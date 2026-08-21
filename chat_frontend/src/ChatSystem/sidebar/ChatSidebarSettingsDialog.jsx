@@ -14,16 +14,22 @@ import {
   ToggleButton,
   ToggleButtonGroup,
   Typography,
+  Menu,
+  MenuItem,
 } from "@mui/material";
 import CircleIcon from "@mui/icons-material/Circle";
 import NotificationsActiveIcon from "@mui/icons-material/NotificationsActive";
 import DarkModeIcon from "@mui/icons-material/DarkMode";
 import LightModeIcon from "@mui/icons-material/LightMode";
 import PhotoCameraIcon from "@mui/icons-material/PhotoCamera";
+import PersonOutlineIcon from "@mui/icons-material/PersonOutline";
+import UploadFileIcon from "@mui/icons-material/UploadFile";
 import LogoutIcon from "@mui/icons-material/Logout";
 import { getImageUrl } from "../chatHelpers";
+import { clearAuthToken } from "../../utils/authToken";
 import { getInitial, statusOptions } from "./sidebarUtils";
 import { useThemeMode } from "../../themeMode";
+import { useState } from "react";
 
 export default function ChatSidebarSettingsDialog({
   avatarUploading,
@@ -43,18 +49,22 @@ export default function ChatSidebarSettingsDialog({
   open,
   settingsNotice,
   statusSaving,
+  page = false,
 }) {
   const { mode, setMode } = useThemeMode();
   const isDarkMode = mode === "dark";
+  const [profileMenuAnchor, setProfileMenuAnchor] = useState(null);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const sectionSx = {
+    p: { xs: 1.5, sm: 2 },
+    mb: 1.5,
+    borderRadius: 3,
+    bgcolor: isDarkMode ? "rgba(255,255,255,0.045)" : "rgba(111,45,168,0.035)",
+    border: "1px solid",
+    borderColor: isDarkMode ? "rgba(255,255,255,0.1)" : "rgba(111,45,168,0.12)",
+  };
 
-  return (
-    <Dialog
-      open={open}
-      onClose={onClose}
-      fullWidth
-      maxWidth="xs"
-      PaperProps={{
-        sx: {
+  const surfaceSx = {
           color: isDarkMode ? "#ffffff" : "text.primary",
           "& .MuiTypography-root": { color: isDarkMode ? "#ffffff" : "text.primary" },
           "& .MuiTypography-colorTextSecondary": {
@@ -69,12 +79,28 @@ export default function ChatSidebarSettingsDialog({
             color: isDarkMode ? "#ffffff" : "primary.main",
             bgcolor: isDarkMode ? "rgba(255,255,255,0.18)" : "action.selected",
           },
-        },
-      }}
-    >
-      <DialogTitle>Settings</DialogTitle>
-      <DialogContent dividers>
-        <Box display="flex" alignItems="center" gap={1.5} mb={2}>
+        };
+  const SettingsContainer = page ? Box : Dialog;
+  const containerProps = page
+    ? { sx: { position: "fixed", zIndex: 10, top: 0, bottom: 0, left: { xs: 0, sm: 320, md: 380 }, width: { xs: "100vw", sm: "calc(100vw - 320px)", md: "calc(100vw - 380px)" }, overflowY: "auto", bgcolor: "var(--chat-canvas)", display: "flex", justifyContent: "center", alignItems: "flex-start", p: { xs: 2, sm: 5 }, border: 0, boxShadow: "none" } }
+    : { open, onClose, fullWidth: true, maxWidth: "xs", PaperProps: { sx: { ...surfaceSx, borderRadius: 4, overflow: "hidden" } } };
+
+  return (
+    <SettingsContainer {...containerProps}>
+      <Box sx={page ? { width: "100%", maxWidth: 560, bgcolor: "var(--chat-canvas)", borderRadius: 0, p: { xs: 2, sm: 3 }, border: 0, boxShadow: "none", ...surfaceSx } : undefined}>
+      <DialogTitle sx={{
+        ...(page ? { px: 0, pt: 0 } : {}),
+        fontSize: { xs: "1.35rem", sm: "1.5rem" },
+        fontWeight: 850,
+        letterSpacing: "-0.02em",
+      }}>
+        Settings
+        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.35, fontWeight: 450 }}>
+          Manage your profile, presence, and chat preferences
+        </Typography>
+      </DialogTitle>
+      <DialogContent dividers={ !page } sx={page ? { px: 0 } : undefined}>
+        <Box sx={{ ...sectionSx, display: "flex", alignItems: "center", gap: 1.5 }}>
           <Badge
             overlap="circular"
             anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
@@ -95,7 +121,7 @@ export default function ChatSidebarSettingsDialog({
                 border: "2px solid #ffffff",
               },
             }}
-            onClick={onAvatarPick}
+            onClick={(event) => setProfileMenuAnchor(event.currentTarget)}
           >
             <Avatar
               src={getImageUrl(currentUser)}
@@ -123,10 +149,49 @@ export default function ChatSidebarSettingsDialog({
           </Box>
         </Box>
 
-        <Typography variant="caption" fontWeight={800} color="text.secondary">
-          Presence
-        </Typography>
-        <Box display="grid" gridTemplateColumns="1fr 1fr" gap={1} mt={1} mb={2}>
+        <Menu
+          anchorEl={profileMenuAnchor}
+          open={Boolean(profileMenuAnchor)}
+          onClose={() => setProfileMenuAnchor(null)}
+        >
+          <MenuItem onClick={() => {
+            setProfileMenuAnchor(null);
+            window.setTimeout(() => setProfileOpen(true), 0);
+          }}>
+            <PersonOutlineIcon fontSize="small" sx={{ mr: 1 }} />
+            View profile
+          </MenuItem>
+          <MenuItem onClick={() => {
+            setProfileMenuAnchor(null);
+            window.setTimeout(() => onAvatarPick?.(), 0);
+          }}>
+            <UploadFileIcon fontSize="small" sx={{ mr: 1 }} />
+            Upload profile photo
+          </MenuItem>
+        </Menu>
+
+        <Dialog open={profileOpen} onClose={() => setProfileOpen(false)} fullWidth maxWidth="xs">
+          <DialogTitle>Profile</DialogTitle>
+          <DialogContent>
+            <Box display="flex" flexDirection="column" alignItems="center" gap={1.25} py={1}>
+              <Avatar src={getImageUrl(currentUser)} sx={{ width: 88, height: 88, bgcolor: "#6F2DA8", fontSize: 30, fontWeight: 900 }}>
+                {getInitial(currentUserName)}
+              </Avatar>
+              <Typography variant="h6" fontWeight={800}>{currentUserName}</Typography>
+              <Typography color="text.secondary">{currentUser?.email || "Pingly user"}</Typography>
+              <Typography variant="body2" color="text.secondary">Status: {currentStatus}</Typography>
+            </Box>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setProfileOpen(false)}>Close</Button>
+          </DialogActions>
+        </Dialog>
+
+        <Box sx={sectionSx}>
+          <Typography variant="subtitle2" fontWeight={850} sx={{ mb: 1.1 }}>
+            Presence
+          </Typography>
+          <Box display="grid" gridTemplateColumns="1fr 1fr" gap={1}>
           {statusOptions.map((option) => (
             <Button
               key={option.value}
@@ -148,11 +213,10 @@ export default function ChatSidebarSettingsDialog({
               {option.label}
             </Button>
           ))}
+          </Box>
         </Box>
 
-        <Divider sx={{ my: 1.5 }} />
-
-        <Box display="flex" alignItems="center" justifyContent="space-between" gap={1}>
+        <Box sx={{ ...sectionSx, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 1 }}>
           <Box display="flex" alignItems="center" gap={1} minWidth={0}>
             <NotificationsActiveIcon sx={{ color: "#6F2DA8" }} />
             <Box minWidth={0}>
@@ -179,8 +243,7 @@ export default function ChatSidebarSettingsDialog({
             {settingsNotice}
           </Typography>
         )}
-        <Divider sx={{ my: 1.5 }} />
-        <Box display="flex" alignItems="center" justifyContent="space-between" gap={1}>
+        <Box sx={{ ...sectionSx, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 1 }}>
           <Box minWidth={0}>
             <Typography fontWeight={800}>Enter to send</Typography>
             <Typography variant="caption" color="text.secondary" noWrap>
@@ -189,8 +252,7 @@ export default function ChatSidebarSettingsDialog({
           </Box>
           <Switch checked={enterToSend} onChange={(event) => onEnterToSendChange?.(event.target.checked)} />
         </Box>
-        <Divider sx={{ my: 1.5 }} />
-        <Box display="flex" alignItems="center" justifyContent="space-between" gap={1}>
+        <Box sx={{ ...sectionSx, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 1 }}>
           <Box display="flex" alignItems="center" gap={1} minWidth={0}>
             <DarkModeIcon color="primary" />
             <Box minWidth={0}>
@@ -218,11 +280,24 @@ export default function ChatSidebarSettingsDialog({
           </ToggleButtonGroup>
         </Box>
       </DialogContent>
-      <DialogActions>
+      <DialogActions sx={{ ...(page ? { px: 0, pb: 0 } : {}), pt: 1, gap: 0.5 }}>
         <Button
           color="error"
           startIcon={<LogoutIcon />}
-          onClick={onLogout}
+          onClick={async () => {
+            onClose();
+            try {
+              if (onLogout) {
+                await onLogout();
+              } else {
+                window.location.replace("http://127.0.0.1:5174/login");
+              }
+            } finally {
+              clearAuthToken();
+              sessionStorage.clear();
+              localStorage.clear();
+            }
+          }}
           sx={{ mr: "auto" }}
         >
           Logout
@@ -232,6 +307,14 @@ export default function ChatSidebarSettingsDialog({
           Done
         </Button>
       </DialogActions>
-    </Dialog>
+      <Typography
+        variant="caption"
+        color="text.secondary"
+        sx={{ display: "block", textAlign: "center", pt: 1.5, pb: page ? 0 : 1.5, opacity: 0.8 }}
+      >
+        Created by Tharu Potharaju
+      </Typography>
+      </Box>
+    </SettingsContainer>
   );
 }

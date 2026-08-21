@@ -63,6 +63,32 @@ const getLocalMediaStream = async (constraints) => {
   );
 };
 
+const describeMediaError = (mediaError, isVideoCall) => {
+  const name = mediaError?.name || "";
+  if (name === "NotAllowedError" || name === "PermissionDeniedError") {
+    return isVideoCall
+      ? "Camera and microphone permission was denied. Allow camera and microphone access for this site, then try again."
+      : "Microphone permission was denied. Allow microphone access for this site, then try again.";
+  }
+  if (name === "NotFoundError" || name === "DevicesNotFoundError") {
+    return isVideoCall
+      ? "No camera or microphone was found. Connect a device and try again."
+      : "No microphone was found. Connect a microphone and try again.";
+  }
+  if (name === "NotReadableError" || name === "TrackStartError") {
+    return isVideoCall
+      ? "The camera or microphone is already being used by another app. Close apps such as Teams, Zoom, or Camera, then try again."
+      : "The microphone is already being used by another app. Close the other app, then try again.";
+  }
+  if (name === "OverconstrainedError") {
+    return "The selected camera or microphone cannot satisfy this call. Check the device and try again.";
+  }
+  if (name === "SecurityError" || !window.isSecureContext) {
+    return "Camera and microphone access requires HTTPS or localhost. Open the chat using a secure URL.";
+  }
+  return mediaError?.message || "Could not start the camera or microphone. Check browser permissions and try again.";
+};
+
 export default function InternalCallPanel({
   activeCall,
   currentUser,
@@ -80,6 +106,7 @@ export default function InternalCallPanel({
   const [cameraEnabled, setCameraEnabled] = useState(true);
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
+  const [mediaRetry, setMediaRetry] = useState(0);
 
   const isAccepted = activeCall?.status === "accepted";
   const isVideoCall = activeCall?.type === "video";
@@ -265,9 +292,7 @@ export default function InternalCallPanel({
         setStatus("Waiting for participant");
         joinCall();
       } catch (mediaError) {
-        setError(
-          mediaError.message || "Camera or microphone permission was denied",
-        );
+        setError(describeMediaError(mediaError, isVideoCall));
       }
     };
 
@@ -299,6 +324,7 @@ export default function InternalCallPanel({
     isCaller,
     isVideoCall,
     makeOffer,
+    mediaRetry,
     socketRef,
   ]);
 
@@ -435,7 +461,11 @@ export default function InternalCallPanel({
         </Box>
       )}
       {error && (
-        <Alert severity="error" sx={{ mx: 1.5, mb: 1 }}>
+        <Alert
+          severity="error"
+          sx={{ mx: 1.5, mb: 1 }}
+          action={isAccepted ? <Button color="inherit" size="small" onClick={() => { setError(""); setMediaRetry((value) => value + 1); }}>Try again</Button> : null}
+        >
           {error}
         </Alert>
       )}

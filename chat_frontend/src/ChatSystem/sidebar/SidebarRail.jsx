@@ -3,6 +3,8 @@ import AttachFileIcon from "@mui/icons-material/AttachFile";
 import SettingsIcon from "@mui/icons-material/Settings";
 import CallIcon from "@mui/icons-material/Call";
 import ChatBubbleIcon from "@mui/icons-material/ChatBubble";
+import GroupAddIcon from "@mui/icons-material/GroupAdd";
+import StickyNote2OutlinedIcon from "@mui/icons-material/StickyNote2Outlined";
 import { getImageUrl } from "../chatHelpers";
 import { appRailItems, getInitial } from "./sidebarUtils";
 
@@ -12,6 +14,8 @@ export default function SidebarRail({
   currentUserName,
   onOpenCalls,
   onOpenMedia,
+  onOpenNotes,
+  onCreateGroup,
   onSettingsOpen,
   onTabSelect,
   totalUnreadCount,
@@ -19,21 +23,21 @@ export default function SidebarRail({
   return (
     <Box
       sx={{
-        bgcolor: "background.paper",
-        color: "text.primary",
+        bgcolor: "var(--chat-rail)",
+        color: "rgba(255,255,255,.72)",
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
         py: 1,
         gap: 0.75,
         borderRight: "1px solid",
-        borderColor: "divider",
+        borderColor: "rgba(255,255,255,.09)",
       }}
     >
       <Tooltip title={currentUserName} placement="right">
         <Avatar
           src={getImageUrl(currentUser)}
-          sx={{ width: 38, height: 38, bgcolor: "#6F2DA8", fontWeight: 900 }}
+          sx={{ width: 40, height: 40, bgcolor: "#7568eb", fontWeight: 900, color: "#fff" }}
         >
           {avatarUploading ? (
             <CircularProgress size={16} sx={{ color: "#ffffff" }} />
@@ -42,7 +46,7 @@ export default function SidebarRail({
           )}
         </Avatar>
       </Tooltip>
-      <Divider flexItem sx={{ borderColor: "divider", my: 0.5 }} />
+      <Divider flexItem sx={{ borderColor: "rgba(255,255,255,.1)", my: 0.75 }} />
       {appRailItems.map((item) => (
         <Tooltip key={item.key} title={item.label} placement="right">
           <IconButton
@@ -50,10 +54,10 @@ export default function SidebarRail({
             sx={{
               width: 40,
               height: 40,
-              color: "#6F2DA8",
-              bgcolor: "var(--chat-soft)",
-              borderRadius: 1.5,
-              "&:hover": { bgcolor: "var(--chat-subtle)" },
+              color: "#fff",
+              bgcolor: "rgba(255,255,255,.08)",
+              borderRadius: 2,
+              "&:hover": { bgcolor: "rgba(255,255,255,.15)" },
             }}
           >
             <Badge
@@ -65,6 +69,7 @@ export default function SidebarRail({
                   fontSize: 10,
                   height: 16,
                   minWidth: 16,
+                  bgcolor: "#ff755d",
                 },
               }}
             >
@@ -73,16 +78,31 @@ export default function SidebarRail({
           </IconButton>
         </Tooltip>
       ))}
+      <Tooltip title="Create group" placement="right">
+        <IconButton
+          onClick={onCreateGroup}
+          sx={{
+            width: 40,
+            height: 40,
+            color: "#b9b2ff",
+            bgcolor: "rgba(255,255,255,.08)",
+            borderRadius: 2,
+            "&:hover": { bgcolor: "rgba(255,255,255,.15)" },
+          }}
+        >
+          <GroupAddIcon />
+        </IconButton>
+      </Tooltip>
       <Tooltip title="Calls" placement="right">
         <IconButton
           onClick={onOpenCalls}
           sx={{
             width: 40,
             height: 40,
-            color: "#1f7a6d",
-            bgcolor: "var(--chat-soft)",
-            borderRadius: 1.5,
-            "&:hover": { bgcolor: "var(--chat-subtle)" },
+            color: "#b9b2ff",
+            bgcolor: "rgba(255,255,255,.08)",
+            borderRadius: 2,
+            "&:hover": { bgcolor: "rgba(255,255,255,.15)" },
           }}
         >
           <CallIcon />
@@ -94,13 +114,28 @@ export default function SidebarRail({
           sx={{
             width: 40,
             height: 40,
-            color: "#1f5f99",
-            bgcolor: "var(--chat-blue-soft)",
-            borderRadius: 1.5,
-            "&:hover": { bgcolor: "var(--chat-subtle)" },
+            color: "#b9b2ff",
+            bgcolor: "rgba(255,255,255,.08)",
+            borderRadius: 2,
+            "&:hover": { bgcolor: "rgba(255,255,255,.15)" },
           }}
         >
           <AttachFileIcon />
+        </IconButton>
+      </Tooltip>
+      <Tooltip title="Notes" placement="right">
+        <IconButton
+          onClick={onOpenNotes}
+          sx={{
+            width: 40,
+            height: 40,
+            color: "#f5c78a",
+            bgcolor: "rgba(255,255,255,.08)",
+            borderRadius: 2,
+            "&:hover": { bgcolor: "rgba(255,255,255,.15)" },
+          }}
+        >
+          <StickyNote2OutlinedIcon />
         </IconButton>
       </Tooltip>
       <Box sx={{ flex: 1 }} />
@@ -110,9 +145,9 @@ export default function SidebarRail({
           sx={{
             width: 40,
             height: 40,
-            color: "text.secondary",
-            borderRadius: 1.5,
-            "&:hover": { bgcolor: "var(--chat-subtle)", color: "text.primary" },
+            color: "rgba(255,255,255,.62)",
+            borderRadius: 2,
+            "&:hover": { bgcolor: "rgba(255,255,255,.15)", color: "#fff" },
           }}
         >
           <SettingsIcon />

@@ -1,156 +1,86 @@
-# Chat Backend
+# Pingly Chat Backend
 
-Standalone local chat API extracted from the ticketing backend.
+Standalone Node.js backend for Pingly Chat. It provides authenticated REST APIs, MySQL persistence through Sequelize, Socket.IO realtime delivery, WebRTC call signaling, conversations, groups, files, reactions, presence, settings, and audit logs.
 
-## Database
+## Requirements
 
-Configured for local MySQL:
+- Node.js 20+
+- MySQL 8+
+- JWT issuer, or optional local password authentication
+- AWS S3 for file/avatar uploads
 
-```env
-DB_NAME=chat_system
-DB_USER=root
-DB_PASS=root
-DB_HOST=localhost
-DB_PORT=3306
-```
+## Install and run
 
-The server creates the `chat_system` database if it does not exist, then syncs these tables:
-
-- `chat_identities`
-- `chat_audit_logs`
-- `chat_conversations`
-- `chat_conversation_participants`
-- `chat_messages`
-- `chat_message_reactions`
-
-The chat flow is local and uses the ticketing system user table as the source of truth.
-Chat identities are created only as local chat mappings for ticketing users.
-
-Configure the ticketing user table with:
-
-```env
-TICKET_DB_NAME=chat_system
-TICKET_USERS_TABLE=users
-TICKET_USER_ID_COLUMN=id
-TICKET_USER_EMAIL_COLUMN=email
-TICKET_USER_NAME_COLUMN=name
-TICKET_USER_USERNAME_COLUMN=username
-TICKET_USER_ROLE_COLUMN=role
-```
-
-## Run
-
-```bash
+~~~bash
 npm install
-npm run dev
-```
-
-Before the first deployment or after model changes, apply the idempotent schema compatibility migration:
-
-```bash
+copy .env.example .env
 npm run db:sync
-```
+npm run dev
+~~~
 
-API health check:
+Default server: http://localhost:4701.
 
-```text
-http://localhost:4701/ping
-```
+~~~bash
+npm run dev
+npm start
+npm test
+npm run db:sync
+~~~
 
-Interactive API documentation is available at `http://localhost:4600/api-docs`.
-The raw OpenAPI document is available at `http://localhost:4600/api-docs.json`.
+If port 4701 is busy on Windows:
 
-## In-app calls
+~~~cmd
+netstat -ano | findstr :4701
+tasklist /FI "PID eq <PID>"
+taskkill /PID <PID> /F
+~~~
 
-Audio and video calls are handled by the chat backend and browser clients. The
-REST API stores the call lifecycle, and Socket.IO relays WebRTC signaling
-messages between conversation participants. Calls use the internal WebRTC
-provider and do not depend on a meeting-platform integration.
+## Configuration
 
-The frontend should use:
+Copy .env.example to .env. Configure PORT, MySQL DB_* values, CLIENT_URL, JWT validation values, CHAT_ALLOWED_APPS, CHAT_ENABLE_PASSWORD_AUTH, AWS S3 values, and optional CHAT_PROVIDER_APP_USERS_URL values.
 
-```env
-VITE_API_URL=http://localhost:4701
-```
+Never commit .env, JWT secrets, AWS credentials, or private keys.
 
-## Multi-Application Embedding
+## Database and IDs
 
-Open chat from each application with both the JWT and application name:
+Main tables include users, roles, identities, conversations, participants, groups, channels, messages, reactions, calls, and audit logs. Conversation and group public IDs are UUIDs; internal numeric IDs remain private.
 
-```text
-https://chat.example.com/chat?token=<jwt>&app=ticket_portal
-```
+## Authentication
 
-The frontend stores the app name and sends it on every API request:
+Protected requests use:
 
-```http
-x-chat-app-name: ticket_portal
+~~~http
 Authorization: Bearer <jwt>
-```
+x-chat-app-name: <application-name>
+~~~
 
-Configure an app-specific user directory endpoint so `/chat-service/users`
-returns only the people associated with the current user in that application:
+The router is available under both /chat-service/... and /api/v1/chat/....
 
-```env
-CHAT_PROVIDER_TICKET_PORTAL_USERS_URL=https://ticket.example.com/api/chat/users
-```
+Successful responses contain status, success, message, and data. Errors contain status, success, message, and code.
 
-The chat backend calls that endpoint with the same bearer token and query params
-like `currentUserId`, `email`, `search`, `limit`, and `excludeSelf`. The endpoint
-can return an array directly or `{ "users": [...] }` / `{ "data": [...] }`.
+## API documentation
 
-If no provider URL is configured for an app, chat falls back to local
-`chat_users` plus already-known chat identities.
+The complete endpoint reference is in docs/API.md.
 
-## Enterprise Chat API
+Interactive OpenAPI documentation:
 
-All chat routes live under `/chat-service` and require `Authorization: Bearer <jwt>`
-unless noted.
+- http://localhost:4701/api-docs
+- http://localhost:4701/api-docs.json
 
-Legacy password login can be scoped to a host portal by passing `type` in the
-request body. The same value should be sent as `x-chat-app-name` on later API
-requests:
+## Realtime and calls
 
-```json
-{
-  "login": "agent@example.com",
-  "password": "secret",
-  "type": "ticket_portal"
-}
-```
+Socket.IO authenticates with token and appName. Events cover messages, typing, reads, reactions, presence, avatars, call lifecycle, and WebRTC signaling. Conversation membership is checked before joining rooms.
 
-`app`, `appName`, and `portal` are also accepted as aliases for `type`.
+Calls use browser WebRTC. Production requires HTTPS and usually a TURN server. Online/Away users can receive calls; Busy, Do Not Disturb, and Offline users do not ring and receive missed-call history. Messages remain deliverable in every status.
 
-### Identity and discovery
+## Health and tests
 
-- `GET /chat-service/me` - current chat identity and connection status.
-- `GET /chat-service/users?search=&limit=&excludeSelf=true` - searchable ticketing user directory.
-- `GET /chat-service/users/:userId` - user profile.
+~~~text
+GET /ping
+GET /api/v1/health
+~~~
 
-### Conversations
-
-- `GET /chat-service/conversations` - conversations with participants, unread counts, and last message.
-- `POST /chat-service/conversations/direct/:userId` - open or create a 1:1 conversation.
-- `POST /chat-service/conversations/groups` - create a group. Body: `{ "title": "...", "userIds": ["..."] }`.
-- `PATCH /chat-service/conversations/:chatId` - rename a group. Body: `{ "title": "..." }`.
-- `POST /chat-service/conversations/:chatId/members` - add group members. Body: `{ "userIds": ["..."] }`.
-- `DELETE /chat-service/conversations/:chatId/members/:userId` - remove a group member.
-- `POST /chat-service/conversations/:chatId/leave` - leave a group.
-- `POST /chat-service/conversations/:chatId/read` - mark a conversation read.
-
-### Messaging
-
-- `GET /chat-service/conversations/:chatId/messages?limit=&before=` - paginated message history.
-- `POST /chat-service/conversations/:chatId/messages` - send to a conversation. Body: `{ "text": "...", "replyTo": 123 }`.
-- `POST /chat-service/messages/direct/:userId` - send a direct message. Body: `{ "text": "..." }`.
-- `POST /chat-service/messages/multiple` - admin bulk DM. Body: `{ "userIds": ["..."], "text": "..." }`.
-- `POST /chat-service/messages/broadcast` - admin broadcast to discovered users. Body: `{ "search": "", "text": "..." }`.
-- `GET /chat-service/messages/search?search=&limit=` - search messages visible to the current user.
-- `POST /chat-service/conversations/:chatId/files` - records a file message with request content metadata.
-
-### Reactions and audit
-
-- `POST /chat-service/conversations/:chatId/messages/:messageId/reactions` - add reaction. Body: `{ "emoji": "..." }`.
-- `DELETE /chat-service/conversations/:chatId/messages/:messageId/reactions/:emoji` - remove reaction.
-- `GET /chat-service/admin/audit-logs?action=&userId=&chatId=&limit=` - admin audit log search.
+~~~bash
+npm test
+~~~
 

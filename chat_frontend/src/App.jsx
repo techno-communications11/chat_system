@@ -6,7 +6,13 @@ import ChatLauncher from "./ChatSystem/ChatLauncher";
 import ChatSystem from "./ChatSystem/Chatsystem";
 import { CHAT_APP_BASE_PATH } from "./ChatSystem/chatRoutes";
 import LoginPage from "./LoginPage";
-import { getStoredAuthToken, getTokenUser, storeAuthToken, storeChatAppName } from "./utils/authToken";
+import {
+  clearAuthToken,
+  getStoredAuthToken,
+  getTokenUser,
+  storeAuthToken,
+  storeChatAppName,
+} from "./utils/authToken";
 
 const tokenParamNames = ["token", "authToken", "access_token"];
 const appParamNames = ["app", "appName", "sourceApp"];
@@ -119,7 +125,9 @@ function TicketingTokenBridge({ children }) {
         setReady(Boolean(tokenUser));
         window.parent.postMessage({ type: "chat:authenticated", ok: Boolean(tokenUser) }, event.origin);
       } else if (message.type === "chat:logout") {
+        clearAuthToken();
         sessionStorage.clear();
+        localStorage.clear();
         setReady(false);
       } else if (message.type === "chat:set-theme") {
         document.documentElement.dataset.chatTheme = String(message.theme || "light");
@@ -166,6 +174,8 @@ function App() {
           <Route path="/" element={<Navigate to={CHAT_APP_BASE_PATH} replace />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path={CHAT_APP_BASE_PATH} element={<ProtectedChatPage />} />
+          <Route path={`${CHAT_APP_BASE_PATH}/settings`} element={<ProtectedChatPage />} />
+          <Route path={`${CHAT_APP_BASE_PATH}/groups/new`} element={<ProtectedChatPage />} />
           <Route path={`${CHAT_APP_BASE_PATH}/:id`} element={<ProtectedChatPage />} />
           <Route
             path="/launcher"

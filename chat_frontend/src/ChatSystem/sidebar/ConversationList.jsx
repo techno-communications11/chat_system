@@ -4,7 +4,8 @@ import {
   getChannelId,
   getChannelName,
 } from "../chatHelpers";
-import { Box, Typography, Avatar, Paper, Button } from "@mui/material";
+import { useMemo, useState } from "react";
+import { Box, Typography, Avatar, Paper, Button, Tab, Tabs } from "@mui/material";
 import ChatBubbleIcon from "@mui/icons-material/ChatBubble";
 import LoadingRows from "./LoadingRows";
 import ConversationListItem from "./ConversationListItem";
@@ -19,8 +20,15 @@ const ConversationList = ({
   onSelectChannel,
   selectedChat,
 }) => {
+  const [conversationFilter, setConversationFilter] = useState("all");
+  const visibleItems = useMemo(() => filteredItems.filter((item) => {
+    if (conversationFilter === "direct") return item.__conversationType === "person";
+    if (conversationFilter === "groups") return item.__conversationType === "channel";
+    return true;
+  }), [conversationFilter, filteredItems]);
+
   return (
-    <Box px={1} py={1.25} sx={{ overflowY: "auto", minHeight: 0, flex: 1 }}>
+    <Box px={1.25} py={1.5} sx={{ bgcolor: "var(--chat-canvas)", overflowY: "auto", minHeight: 0, flex: 1 }}>
       {loadError && (
         <Paper
           variant="outlined"
@@ -42,16 +50,36 @@ const ConversationList = ({
         </Paper>
       )}
 
-      <Box display="flex" alignItems="center" gap={0.75} px={1} mb={0.75}>
-        <Typography variant="caption" fontWeight={800} color="text.secondary">
-          ALL CONVERSATIONS
-        </Typography>
+      <Box display="flex" alignItems="center" gap={0.75} px={1} mb={1}>
+        <Tabs
+          value={conversationFilter}
+          onChange={(_, value) => setConversationFilter(value)}
+          variant="fullWidth"
+          sx={{
+            width: "100%",
+            minHeight: 34,
+            "& .MuiTabs-indicator": { height: 2, borderRadius: 2 },
+            "& .MuiTab-root": {
+              minHeight: 34,
+              minWidth: 0,
+              px: 0.5,
+              py: 0,
+              textTransform: "none",
+              fontSize: 12,
+              fontWeight: 700,
+            },
+          }}
+        >
+          <Tab value="all" label="All" />
+          <Tab value="direct" label="Chats" />
+          <Tab value="groups" label="Groups" />
+        </Tabs>
       </Box>
 
       {loading ? (
         <LoadingRows />
       ) : (
-        filteredItems.map((item) => {
+        visibleItems.map((item) => {
           const isChannelItem = item.__conversationType === "channel";
           return (
             <ConversationListItem
@@ -70,7 +98,7 @@ const ConversationList = ({
         })
       )}
 
-      {!loading && filteredItems.length === 0 && (
+      {!loading && visibleItems.length === 0 && (
         <Box
           display="flex"
           flexDirection="column"
@@ -89,6 +117,7 @@ const ConversationList = ({
           </Typography>
         </Box>
       )}
+
     </Box>
   );
 };

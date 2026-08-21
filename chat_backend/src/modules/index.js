@@ -197,6 +197,14 @@ const ensureSchemaCompatibility = async () => {
     type: DataTypes.JSON,
     allowNull: true,
   });
+  await addColumnIfMissing(queryInterface, "chat_conversations", "publicId", {
+    type: DataTypes.UUID,
+    allowNull: true,
+  });
+  await addColumnIfMissing(queryInterface, "chat_groups", "publicId", {
+    type: DataTypes.UUID,
+    allowNull: true,
+  });
   await addColumnIfMissing(queryInterface, "chat_identities", "metadata", {
     type: DataTypes.JSON,
     allowNull: true,

@@ -17,6 +17,7 @@ import {
 } from "@mui/material";
 import GroupIcon from "@mui/icons-material/Group";
 import SearchIcon from "@mui/icons-material/Search";
+import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import {
   getBuddyEmail,
   getBuddyName,
@@ -38,26 +39,46 @@ export function GroupCreationDialog({
   title,
   onTitleChange,
   creating,
+  page = false,
 }) {
   return (
     <Dialog
       open={open}
       onClose={onClose}
+      hideBackdrop={page}
       fullWidth
-      maxWidth="sm"
-      PaperProps={{ sx: { borderRadius: 3, overflow: "hidden" } }}
+      maxWidth={page ? false : "sm"}
+      PaperProps={{
+        sx: page
+          ? {
+              position: "fixed",
+              top: 0,
+              bottom: 0,
+              left: { xs: 0, sm: 320, md: 380 },
+              width: { xs: "100vw", sm: "calc(100vw - 320px)", md: "calc(100vw - 380px)" },
+              maxWidth: "none",
+              maxHeight: "none",
+              height: "100vh",
+              m: 0,
+              borderRadius: 0,
+              border: 0,
+              boxShadow: "none",
+              bgcolor: "var(--chat-canvas)",
+            }
+          : { borderRadius: 3, overflow: "hidden" },
+      }}
     >
       <DialogTitle sx={{ pb: 1.5 }}>
-        <Box display="flex" alignItems="center" gap={1.25}>
-          <Avatar sx={{ bgcolor: "primary.main", width: 42, height: 42 }}>
+        <Box display="flex" alignItems="center" gap={1.5}>
+          <Avatar sx={{ bgcolor: "primary.main", width: 48, height: 48, boxShadow: "0 8px 20px rgba(111,45,168,.2)" }}>
             <GroupIcon />
           </Avatar>
           <Box>
-            <Typography variant="h6" fontWeight={800}>
+            <Typography variant="h5" fontWeight={800} letterSpacing="-.02em">
               New group
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              Add people and choose a group name
+              Create a space for your team and friends
             </Typography>
           </Box>
         </Box>
@@ -71,11 +92,12 @@ export function GroupCreationDialog({
           value={title}
           onChange={(event) => onTitleChange(event.target.value)}
           inputProps={{ maxLength: 80 }}
+          sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2 } }}
         />
         <Typography
           variant="caption"
           color="text.secondary"
-          sx={{ display: "block", mt: 2, mb: 0.75, fontWeight: 700 }}
+          sx={{ display: "block", mt: 2.5, mb: 0.75, fontWeight: 800, letterSpacing: ".04em", textTransform: "uppercase" }}
         >
           Selected members{" "}
           {selectedMembers.length ? `(${selectedMembers.length})` : ""}
@@ -136,13 +158,14 @@ export function GroupCreationDialog({
               </InputAdornment>
             ),
           }}
+          sx={{ "& .MuiOutlinedInput-root": { borderRadius: 2.5, bgcolor: "action.hover" } }}
         />
         {error && (
           <Alert severity="error" sx={{ mt: 1.5 }}>
             {error}
           </Alert>
         )}
-        <List sx={{ maxHeight: 310, overflow: "auto", mt: 1, p: 0 }}>
+        <List sx={{ maxHeight: 360, overflow: "auto", mt: 1.25, p: 0.25 }}>
           {members.map((buddy) => {
             const userId = String(getBuddySendId(buddy));
             const checked = selectedMembers.some(
@@ -152,11 +175,21 @@ export function GroupCreationDialog({
               <ListItemButton
                 key={userId}
                 onClick={() => onSelectMember(userId)}
-                sx={{ borderRadius: 2, mb: 0.25, px: 1 }}
+                sx={{
+                  borderRadius: 2,
+                  mb: 0.5,
+                  px: 1.25,
+                  py: 0.75,
+                  bgcolor: checked ? "action.selected" : "transparent",
+                  border: "1px solid",
+                  borderColor: checked ? "primary.main" : "transparent",
+                  transition: "background-color 160ms ease, border-color 160ms ease, transform 160ms ease",
+                  "&:hover": { bgcolor: checked ? "action.selected" : "action.hover", transform: "translateX(2px)" },
+                }}
               >
-                <Avatar
-                  src={getImageUrl(buddy)}
-                  sx={{ width: 42, height: 42, mr: 1.25 }}
+                  <Avatar
+                    src={getImageUrl(buddy)}
+                    sx={{ width: 42, height: 42, mr: 1.25, border: checked ? "2px solid" : "0 solid", borderColor: "primary.main" }}
                 >
                   {getInitial(getBuddyName(buddy))}
                 </Avatar>
@@ -166,7 +199,7 @@ export function GroupCreationDialog({
                   primaryTypographyProps={{ noWrap: true }}
                   secondaryTypographyProps={{ noWrap: true }}
                 />
-                <Checkbox checked={checked} tabIndex={-1} disableRipple />
+                {checked && <CheckCircleIcon color="primary" sx={{ fontSize: 21, mr: 0.5 }} />}
               </ListItemButton>
             );
           })}
@@ -188,7 +221,7 @@ export function GroupCreationDialog({
         <Button
           variant="contained"
           onClick={onCreate}
-          disabled={creating || selectedMembers.length === 0}
+          disabled={creating || !title.trim() || selectedMembers.length === 0}
           sx={{
             borderRadius: 2,
             textTransform: "none",

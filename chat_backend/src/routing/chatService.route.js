@@ -1,14 +1,14 @@
 import express from "express";
 import { registerUser, loginUser } from "../controllers/chat/auth.controllers.js";
 import {
-  getChatMe, updateChatStatus, updateChatAvatarController,
+  getChatMe, getChatSettings, updateChatSettings, updateChatStatus, updateChatAvatarController,
   listChatUsers, getChatUser, listRoles, createRole,
 } from "../controllers/chat/identity.controllers.js";
 import {
   listChatConversations, listGroups, listChannels, createChannel,
   joinChannel, openDirectConversation, openGroupConversation,
   updateConversation, addConversationMembers, removeConversationMember,
-  leaveConversation, markConversationRead, clearConversationHistory,
+  leaveConversation, transferOwnership, markConversationRead, clearConversationHistory,
 } from "../controllers/chat/conversation.controllers.js";
 import {
   getConversationMessages, searchMessages, postConversationMessage,
@@ -28,6 +28,8 @@ chatServiceRouter.post("/auth/register", authRateLimit, requireLegacyAuthEnabled
 chatServiceRouter.post("/auth/login", authRateLimit, requireLegacyAuthEnabled, loginUser);
 
 chatServiceRouter.get("/me", checkAuth, getChatMe);
+chatServiceRouter.get("/me/settings", checkAuth, getChatSettings);
+chatServiceRouter.patch("/me/settings", checkAuth, updateChatSettings);
 chatServiceRouter.patch("/me/status", checkAuth, updateChatStatus);
 chatServiceRouter.patch("/me/avatar", checkAuth, updateChatAvatarController);
 
@@ -60,6 +62,7 @@ chatServiceRouter.delete(
   removeConversationMember
 );
 chatServiceRouter.post("/conversations/:chatId/leave", checkAuth, leaveConversation);
+chatServiceRouter.post("/conversations/:chatId/transfer-ownership", checkAuth, transferOwnership);
 chatServiceRouter.post(
   "/conversations/:chatId/read",
   checkAuth,

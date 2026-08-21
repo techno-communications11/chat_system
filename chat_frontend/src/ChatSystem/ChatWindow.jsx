@@ -48,6 +48,7 @@ import NotificationsActiveIcon from "@mui/icons-material/NotificationsActive";
 import NotificationsOffIcon from "@mui/icons-material/NotificationsOff";
 import DeleteSweepIcon from "@mui/icons-material/DeleteSweep";
 import VideoCallIcon from "@mui/icons-material/VideoCall";
+import CalendarMonthIcon from "@mui/icons-material/CalendarMonth";
 import { REACTION_OPTIONS } from "../utils/constants.js";
 import {
   getAvailability,
@@ -79,6 +80,7 @@ import MessageActions from "./chatWindow/MessageActions";
 import MessageRowComponent from "./chatWindow/MessageRow";
 import SidebarItem from "./chatWindow/SidebarItem";
 import ConversationMediaDialog from "./chatWindow/ConversationMediaDialog";
+import ScheduleCallDialog from "./calls/ScheduleCallDialog";
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 const BRAND = "#6750E8";
@@ -537,15 +539,16 @@ function MessageRowLegacy({
 
         <Box
           sx={{
-            px: 1.4,
-            py: 0.9,
-            borderRadius: isMe ? "10px 2px 10px 10px" : "2px 10px 10px 10px",
+            px: 1.5,
+            py: 1,
+            borderRadius: isMe ? "16px 4px 16px 16px" : "4px 16px 16px 16px",
             bgcolor: (theme) => isMe
-              ? theme.palette.mode === "dark" ? "#31523a" : "#dcf8c6"
-              : theme.palette.background.paper,
-            border: isMe ? "none" : "0.5px solid",
-            borderColor: "divider",
-            boxShadow: "0 1px 1px rgba(0,0,0,0.05)",
+              ? theme.palette.mode === "dark" ? "#4d4698" : "#7469e8"
+              : theme.palette.mode === "dark" ? "#20263b" : "#eef0fb",
+            color: isMe ? "#fff" : "text.primary",
+            border: isMe ? "none" : "1px solid",
+            borderColor: isMe ? "transparent" : "#e3e5f0",
+            boxShadow: isMe ? "0 8px 18px rgba(103,80,232,.18)" : "0 4px 12px rgba(35,42,70,.045)",
             maxWidth: "100%",
           }}
         >
@@ -594,7 +597,7 @@ function MessageRowLegacy({
           )}
           <Typography
             fontSize={13.5}
-            color="text.primary"
+            color={isMe ? "#ffffff" : "text.primary"}
             lineHeight={1.55}
             sx={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}
           >
@@ -622,7 +625,7 @@ function MessageRowLegacy({
             minWidth={44}
             sx={{ lineHeight: 1.2, whiteSpace: "nowrap" }}
           >
-            <Typography component="span" fontSize={10} color="text.secondary">
+            <Typography component="span" fontSize={10} color={isMe ? "rgba(255,255,255,.78)" : "text.secondary"}>
               {message.timestamp || ""}
             </Typography>
             {isMe && (
@@ -963,6 +966,7 @@ export default function ChatWindow({
   handleSend,
   onEndActiveCall,
   onLeaveGroup,
+  onTransferOwnership,
   onLoadOlderMessages,
   inputValue,
   mentionableUsers = [],
@@ -996,6 +1000,7 @@ export default function ChatWindow({
   const [groupInfoOpen, setGroupInfoOpen] = useState(false);
   const [leaveConfirmOpen, setLeaveConfirmOpen] = useState(false);
   const [mediaDialogOpen, setMediaDialogOpen] = useState(false);
+  const [scheduleCallDialogOpen, setScheduleCallDialogOpen] = useState(false);
   const [selectedMessageIds, setSelectedMessageIds] = useState([]);
   const availability = selectedChat ? getAvailability(selectedChat.raw) : null;
   const groupMembers =
@@ -1035,8 +1040,8 @@ export default function ChatWindow({
   const clearMessageSelection = () => setSelectedMessageIds([]);
 
   const deleteSelectedMessages = async () => {
-    await handleDeleteMessages?.(selectedMessages);
-    clearMessageSelection();
+    const deleted = await handleDeleteMessages?.(selectedMessages);
+    if (deleted) clearMessageSelection();
   };
 
   const closeGroupMenu = () => {
@@ -1159,8 +1164,8 @@ export default function ChatWindow({
               display: "flex",
               flexDirection: "column",
               minWidth: 0,
-              bgcolor: "background.paper",
-              backgroundImage: "linear-gradient(180deg, rgba(103,80,232,.035), transparent 75%)",
+              bgcolor: "var(--chat-canvas)",
+              backgroundImage: "radial-gradient(circle at 82% 8%, rgba(117,104,235,.07), transparent 28%), linear-gradient(180deg, rgba(255,255,255,.3), transparent 75%)",
             }}
           >
             {/* ── Header ── */}
@@ -1171,8 +1176,8 @@ export default function ChatWindow({
               alignItems="center"
               justifyContent="space-between"
               bgcolor="background.paper"
-              borderBottom="0.5px solid"
-              sx={{ borderColor: "divider", boxShadow: "0 1px 12px rgba(35,42,70,.04)", zIndex: 1 }}
+              borderBottom="0"
+              sx={{ boxShadow: "0 4px 18px rgba(0,0,0,.08)", zIndex: 1 }}
             >
               <Box display="flex" alignItems="center" gap={1.25}>
                 <IconButton
@@ -1206,8 +1211,8 @@ export default function ChatWindow({
 
                 <Box>
                   <Typography
-                    fontWeight={600}
-                    fontSize={14}
+                    fontWeight={750}
+                    fontSize={16}
                     color="text.primary"
                   >
                     {selectedChat.title}
@@ -1226,7 +1231,7 @@ export default function ChatWindow({
                     <Typography
                       variant="caption"
                       color="text.secondary"
-                      fontSize={11}
+                      fontSize={12}
                     >
                       {selectedChat.type === "channel"
                         ? getGroupMemberSummary(selectedChat, currentUser)
@@ -1265,6 +1270,11 @@ export default function ChatWindow({
                   icon={callStarting ? <CircularProgress size={14} /> : <VideoCallIcon sx={{ fontSize: 17 }} />}
                   disabled={callStarting}
                   onClick={() => onStartConversationCall?.("video")}
+                />
+                <ToolBtn
+                  title="Schedule call"
+                  icon={<CalendarMonthIcon sx={{ fontSize: 17 }} />}
+                  onClick={() => setScheduleCallDialogOpen(true)}
                 />
                 <Box
                   sx={{
@@ -1316,6 +1326,7 @@ export default function ChatWindow({
               onCloseLeaveConfirm={() => setLeaveConfirmOpen(false)}
               onCloseMenu={closeGroupMenu}
               onLeaveGroup={onLeaveGroup}
+              onTransferOwnership={onTransferOwnership}
               onOpenInfo={openGroupInfo}
               onOpenMedia={() => { setMediaDialogOpen(true); closeGroupMenu(); }}
               onClearChat={() => { onClearChat?.(); closeGroupMenu(); }}
@@ -1948,6 +1959,12 @@ export default function ChatWindow({
           <Button onClick={closeForwardDialog}>Cancel</Button>
         </DialogActions>
       </Dialog>
+      <ScheduleCallDialog
+        open={scheduleCallDialogOpen}
+        onClose={() => setScheduleCallDialogOpen(false)}
+        selectedChat={selectedChat}
+        currentUser={currentUser}
+      />
     </>
   );
 }

@@ -10,6 +10,7 @@ export {
   addGroupConversationMembers,
   removeGroupConversationMember,
   leaveChatConversation,
+  transferGroupOwnership,
   markChatConversationRead,
   clearChatHistory,
 } from "../chatProvider.services.js";

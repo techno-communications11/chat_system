@@ -20,7 +20,7 @@ import {
 } from "@mui/material";
 import SearchIcon from "@mui/icons-material/Search";
 import GroupIcon from "@mui/icons-material/Group";
-import { useNavigate, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import ChatSidebar from "./ChatSidebar";
 import ChatWindow from "./ChatWindow";
 import { CHAT_APP_BASE_PATH } from "./chatRoutes";
@@ -41,7 +41,6 @@ import {
   resolveLocalChatKey,
 } from "./chatHelpers";
 import {
-  requestChatNotificationPermission,
   showChatNotification,
   playMessageNotificationSound,
 } from "./chatNotifications";
@@ -61,6 +60,7 @@ import {
   deleteConversationMessageService,
   editConversationMessageService,
   leaveGroupConversationService,
+  transferGroupOwnershipService,
   markConversationReadService,
   openDirectChatService,
   pinConversationMessageService,
@@ -73,22 +73,129 @@ import {
   getActiveConversationCallsService,
   respondConversationCallService,
   updateChatAvatarService,
+  updateChatAvatarUrlService,
   updateChatStatusService,
 } from "../Services/chat.services";
 import { clearAuthToken, getTokenUser } from "../utils/authToken";
 import { getInitial } from "./sidebar/sidebarUtils";
 import { AddMembersDialog, GroupCreationDialog } from "./chatWindow/GroupDialogs";
 
+const getMessageTimestamp = (message) => {
+  const value =
+    message?.createdAt ||
+    message?.created_at ||
+    message?.sentAt ||
+    message?.sent_at ||
+    message?.timestamp ||
+    message?.time;
+  const numericValue = Number(value);
+  const timestamp = Number.isFinite(numericValue) && numericValue > 0
+    ? numericValue < 1e12
+      ? numericValue * 1000
+      : numericValue
+    : value
+      ? new Date(value).getTime()
+      : NaN;
+  return Number.isFinite(timestamp) ? timestamp : 0;
+};
+
+const getConversationActivityTime = (conversation) => {
+  const value =
+    conversation?.lastMessage?.createdAt ||
+    conversation?.lastMessage?.created_at ||
+    conversation?.last_message?.createdAt ||
+    conversation?.last_message?.created_at ||
+    conversation?.lastMessageAt ||
+    conversation?.last_message_at ||
+    conversation?.lastMessageTime ||
+    conversation?.last_message_time ||
+    conversation?.updatedAt ||
+    conversation?.updated_at;
+
+  if (value == null || value === "") return 0;
+  const numericValue = Number(value);
+  if (Number.isFinite(numericValue)) {
+    return numericValue < 1e12 ? numericValue * 1000 : numericValue;
+  }
+  const parsedValue = new Date(value).getTime();
+  return Number.isFinite(parsedValue) ? parsedValue : 0;
+};
+
+const isMessageReadByUser = (message, currentUserId, currentUserEmail) => {
+  if (message?.isRead === true || message?.is_read === true || message?.read === true) {
+    return true;
+  }
+
+  const readers = [
+    message?.readBy,
+    message?.read_by,
+    message?.readStates,
+    message?.read_states,
+    message?.readReceipts,
+    message?.read_receipts,
+  ].find(Array.isArray);
+
+  if (!readers) return false;
+
+  return readers.some((reader) => {
+    const readerId = String(
+      typeof reader === "object"
+        ? reader?.userId || reader?.user_id || reader?.id || reader?.appUserId
+        : reader,
+    );
+    const readerEmail = String(
+      typeof reader === "object"
+        ? reader?.email || reader?.email_id || reader?.mailid
+        : "",
+    ).toLowerCase();
+
+    return (
+      (currentUserId && readerId === currentUserId) ||
+      (currentUserEmail && readerEmail === currentUserEmail)
+    );
+  });
+};
+
+const getConversationIdFromResponse = (response) => {
+  const root = response?.data;
+  const payload = root?.data;
+  const candidates = [
+    payload?.chat_id,
+    payload?.chatId,
+    payload?.conversation_id,
+    payload?.conversationId,
+    payload?.id,
+    payload?.conversation?.chat_id,
+    payload?.conversation?.chatId,
+    payload?.conversation?.conversation_id,
+    payload?.conversation?.conversationId,
+    payload?.conversation?.id,
+    payload?.data?.chat_id,
+    payload?.data?.chatId,
+    payload?.data?.conversation_id,
+    payload?.data?.conversationId,
+    payload?.data?.id,
+  ];
+
+  return candidates.find((value) => value !== undefined && value !== null && value !== "") || null;
+};
+
 export default function ChatSystem({ standalone = false }) {
   const navigate = useNavigate();
+  const location = useLocation();
+  const settingsPage = location.pathname.endsWith("/settings");
+  const groupPage = location.pathname.endsWith("/groups/new");
   const { id } = useParams();
   const chatBoxRef = useRef(null);
   const initialFetchStartedRef = useRef(false);
   const loadedChatHistoryRef = useRef(new Set());
   const readConversationKeysRef = useRef(new Set());
   const handledRealtimeMessageKeysRef = useRef(new Set());
+  const chatClearVersionsRef = useRef(new Map());
+  const realtimeStartedAtRef = useRef(Date.now());
 
   const [, setTab] = useState("conversations");
+  const [readStateVersion, setReadStateVersion] = useState(0);
   const [buddies, setBuddies] = useState([]);
   const [channels, setChannels] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -126,7 +233,25 @@ export default function ChatSystem({ standalone = false }) {
   const [callResponding, setCallResponding] = useState(false);
   const [callError, setCallError] = useState("");
   const [callNotice, setCallNotice] = useState("");
+  const [confirmationDialog, setConfirmationDialog] = useState(null);
+  const confirmationResolverRef = useRef(null);
   useCallTone(incomingCall ? "incoming" : activeCall?.status === "ringing" ? "outgoing" : null);
+
+  const requestConfirmation = useCallback((options) => new Promise((resolve) => {
+    confirmationResolverRef.current = resolve;
+    setConfirmationDialog({
+      title: options?.title || "Please confirm",
+      message: options?.message || "Are you sure you want to continue?",
+      confirmLabel: options?.confirmLabel || "Confirm",
+      confirmColor: options?.confirmColor || "error",
+    });
+  }), []);
+
+  const closeConfirmation = (confirmed) => {
+    confirmationResolverRef.current?.(confirmed);
+    confirmationResolverRef.current = null;
+    setConfirmationDialog(null);
+  };
 
   const [mutedChatIds, setMutedChatIds] = useState(() => {
     try {
@@ -364,16 +489,28 @@ export default function ChatSystem({ standalone = false }) {
             );
           });
         });
+        const directConversationId =
+          matchingDirectConversation?.chat_id ||
+          matchingDirectConversation?.chatId ||
+          matchingDirectConversation?.id ||
+          buddy?.directConversationId ||
+          buddy?.chat_id ||
+          buddy?.chatId ||
+          "";
+        const isRead =
+          readStateVersion >= 0 &&
+          (readConversationKeysRef.current.has(`user:${buddyId}`) ||
+            readConversationKeysRef.current.has(`email:${buddyEmail}`) ||
+            (directConversationId &&
+              readConversationKeysRef.current.has(`chat:${String(directConversationId)}`)));
 
         return {
           ...(matchingDirectConversation || {}),
           ...buddy,
-          directConversationId:
-            matchingDirectConversation?.chat_id ||
-            matchingDirectConversation?.chatId ||
-            matchingDirectConversation?.id ||
-            "",
-          unreadCount: getUnreadCount(matchingDirectConversation) || getUnreadCount(buddy),
+          directConversationId,
+          unreadCount: isRead
+            ? 0
+            : getUnreadCount(matchingDirectConversation) || getUnreadCount(buddy),
           lastMessage:
             matchingDirectConversation?.lastMessage ||
             matchingDirectConversation?.last_message ||
@@ -392,15 +529,20 @@ export default function ChatSystem({ standalone = false }) {
         };
       });
 
-      return [
+      const items = [
         ...directRows,
         ...visibleGroupChannels.map((channel) => ({
           ...channel,
           __conversationType: "channel",
         })),
       ];
+
+      return items.sort(
+        (first, second) =>
+          getConversationActivityTime(second) - getConversationActivityTime(first),
+      );
     },
-    [visibleBuddies, visibleDirectChannels, visibleGroupChannels],
+    [readStateVersion, visibleBuddies, visibleDirectChannels, visibleGroupChannels],
   );
   const totalUnreadCount = useMemo(
     () => {
@@ -471,28 +613,50 @@ export default function ChatSystem({ standalone = false }) {
       if (!normalizedMessage) return;
       if (blockedUserIds.includes(String(normalizedMessage.authorId))) return;
 
-      const isActiveChat =
-        (selectedChat?.type === "channel" &&
-          String(selectedChat.id) === String(chatId)) ||
-        (selectedChat?.type === "person" &&
-          String(selectedChat.chatId || "") === String(chatId));
+      const selectedChatIds = [
+        selectedChat?.id,
+        selectedChat?.chatId,
+        selectedChat?.raw?.id,
+        selectedChat?.raw?.chat_id,
+        selectedChat?.raw?.chatId,
+        selectedChat?.raw?.conversationId,
+        selectedChat?.raw?.conversation_id,
+      ]
+        .filter(Boolean)
+        .map(String);
+      const isActiveChat = selectedChatIds.includes(String(chatId));
+      const messageKeys = Array.from(new Set([
+        localKey,
+        ...(isActiveChat ? [selectedChat?.id] : []),
+      ].filter(Boolean).map(String)));
+      const existingMessages = messageKeys.reduce(
+        (allMessages, key) => [...allMessages, ...(messagesByChat[key] || [])],
+        [],
+      );
+      const isAlreadyLoaded = existingMessages.some(
+        (item) => String(item.id) === String(normalizedMessage.id),
+      );
+      const messageTimestamp = getMessageTimestamp(message);
+      const isNewSinceRealtimeStarted =
+        !messageTimestamp || messageTimestamp >= realtimeStartedAtRef.current;
+      const isReadByCurrentUser = isMessageReadByUser(
+        message,
+        currentUserId,
+        currentUserEmail,
+      );
+
       const shouldTreatAsRead = isActiveChat && !document.hidden;
 
-      if (localKey) {
+      if (messageKeys.length > 0) {
         setMessagesByChat((prev) => {
-          const existing = prev[localKey] || [];
-          if (
-            existing.some(
-              (item) => String(item.id) === String(normalizedMessage.id),
-            )
-          ) {
-            return prev;
-          }
-
-          return {
-            ...prev,
-            [localKey]: [...existing, normalizedMessage],
-          };
+          const next = { ...prev };
+          messageKeys.forEach((key) => {
+            const existing = next[key] || [];
+            if (!existing.some((item) => String(item.id) === String(normalizedMessage.id))) {
+              next[key] = [...existing, normalizedMessage];
+            }
+          });
+          return next;
         });
       }
 
@@ -554,7 +718,14 @@ export default function ChatSystem({ standalone = false }) {
         ];
       });
 
-      if (!isOwnMessage && (!isActiveChat || document.hidden)) {
+      const shouldNotify =
+        !isOwnMessage &&
+        (!isActiveChat || document.hidden) &&
+        !isAlreadyLoaded &&
+        isNewSinceRealtimeStarted &&
+        !isReadByCurrentUser;
+
+      if (shouldNotify) {
         if (mutedChatIds.includes(String(chatId))) return;
 
         const senderName =
@@ -581,7 +752,18 @@ export default function ChatSystem({ standalone = false }) {
         markConversationReadService(chatId).catch(() => {});
       }
     },
-    [blockedUserIds, buddies, channels, currentUser, currentUserId, mutedChatIds, navigate, selectedChat],
+    [
+      blockedUserIds,
+      buddies,
+      channels,
+      currentUser,
+      currentUserEmail,
+      currentUserId,
+      messagesByChat,
+      mutedChatIds,
+      navigate,
+      selectedChat,
+    ],
   );
 
   const handleRealtimeMessageUpdated = useCallback(
@@ -736,6 +918,7 @@ export default function ChatSystem({ standalone = false }) {
 
   const handleRealtimeCallRinging = useCallback(({ call }) => {
     if (!call?.id) return;
+    if (activeCall?.id || incomingCall?.id) return;
     const callerId = call.startedBy?.id || call.startedBy?.userId || call.startedBy?.user_id;
     if (blockedUserIds.includes(String(callerId))) return;
     if (mutedChatIds.includes(String(call.chatId || call.chat_id || ""))) return;
@@ -750,7 +933,7 @@ export default function ChatSystem({ standalone = false }) {
       body: `${call.startedBy?.name || "A chat user"} is calling you`,
       tag: `chat-call-${call.id}`,
     });
-  }, [blockedUserIds, currentUserId, mutedChatIds]);
+  }, [activeCall?.id, blockedUserIds, currentUserId, incomingCall?.id, mutedChatIds]);
 
   const handleRealtimeCallAccepted = useCallback(({ call }) => {
     if (!call?.id) return;
@@ -817,10 +1000,6 @@ export default function ChatSystem({ standalone = false }) {
     onCallMissed: handleRealtimeCallMissed,
   });
 
-  useEffect(() => {
-    requestChatNotificationPermission().catch(() => {});
-  }, []);
-
   const clearUnreadForChat = useCallback(({ chatId, userId, email } = {}) => {
     const normalizedChatId = String(chatId || "");
     const normalizedUserId = String(userId || "");
@@ -829,20 +1008,38 @@ export default function ChatSystem({ standalone = false }) {
     if (normalizedChatId) readConversationKeysRef.current.add(`chat:${normalizedChatId}`);
     if (normalizedUserId) readConversationKeysRef.current.add(`user:${normalizedUserId}`);
     if (normalizedEmail) readConversationKeysRef.current.add(`email:${normalizedEmail}`);
+    setReadStateVersion((version) => version + 1);
 
     setChannels((prev) =>
       prev.map((item) => {
         const conversationId = String(item?.chat_id || item?.chatId || item?.id || "");
         const channelId = String(getChannelId(item) || "");
+        const itemUserId = String(
+          item?.user_id ||
+            item?.userId ||
+            item?.peer_id ||
+            item?.peerId ||
+            item?.other_user_id ||
+            item?.otherUserId ||
+            "",
+        );
+        const itemEmail = String(
+          item?.email || item?.email_id || item?.user_email || item?.userEmail || "",
+        ).toLowerCase();
         const shouldClear =
           (normalizedChatId &&
             (conversationId === normalizedChatId || channelId === normalizedChatId)) ||
           (normalizedUserId &&
+            (itemUserId === normalizedUserId ||
+              (Array.isArray(item?.participants) &&
+                item.participants.some(
+                  (participant) => String(getBuddySendId(participant)) === normalizedUserId,
+                )))) ||
+          (normalizedEmail && itemEmail === normalizedEmail) ||
+          (normalizedEmail &&
             Array.isArray(item?.participants) &&
             item.participants.some(
-              (participant) =>
-                String(getBuddySendId(participant)) === normalizedUserId ||
-                String(getBuddyEmail(participant)).toLowerCase() === normalizedEmail,
+              (participant) => String(getBuddyEmail(participant)).toLowerCase() === normalizedEmail,
             ));
 
         return shouldClear
@@ -887,10 +1084,51 @@ export default function ChatSystem({ standalone = false }) {
     });
   }, []);
 
+  const markChatAsRead = useCallback(
+    async ({ chatId, userId, email } = {}) => {
+      if (!chatId) return;
+
+      await markConversationReadService(chatId);
+      clearUnreadForChat({ chatId, userId, email });
+    },
+    [clearUnreadForChat],
+  );
+
+  useEffect(() => {
+    if (!activeConversationId) return undefined;
+
+    const markActiveChatRead = () => {
+      if (document.hidden) return;
+      markChatAsRead({
+        chatId: activeConversationId,
+        userId: selectedChat?.type === "person" ? selectedChat.id : "",
+        email: selectedChat?.type === "person" ? selectedChat.subtitle : "",
+      }).catch(() => {});
+    };
+
+    window.addEventListener("focus", markActiveChatRead);
+    document.addEventListener("visibilitychange", markActiveChatRead);
+    markActiveChatRead();
+
+    return () => {
+      window.removeEventListener("focus", markActiveChatRead);
+      document.removeEventListener("visibilitychange", markActiveChatRead);
+    };
+  }, [
+    activeConversationId,
+    markChatAsRead,
+    selectedChat?.id,
+    selectedChat?.subtitle,
+    selectedChat?.type,
+  ]);
+
   const loadDirectChatHistory = useCallback(async (chat) => {
     if (!chat || chat.type !== "person" || !chat.id) return;
 
-    loadedChatHistoryRef.current.add(chat.id);
+    const chatKey = String(chat.id);
+    const requestClearVersion = chatClearVersionsRef.current.get(chatKey) || 0;
+
+    loadedChatHistoryRef.current.add(chatKey);
     clearUnreadForChat({
       chatId: chat.chatId,
       userId: chat.id,
@@ -899,24 +1137,20 @@ export default function ChatSystem({ standalone = false }) {
 
     try {
       const openResponse = await openDirectChatService(chat.id);
-      const chatId =
-        openResponse.data?.data?.chat_id ||
-        openResponse.data?.data?.data?.chat_id ||
-        null;
+      const chatId = getConversationIdFromResponse(openResponse);
 
       if (!chatId) return;
 
       setSelectedChat((prev) =>
         prev?.id === chat.id ? { ...prev, chatId } : prev
       );
-      clearUnreadForChat({
+      await markChatAsRead({
         chatId,
         userId: chat.id,
         email: chat.subtitle || getBuddyEmail(chat.raw),
       });
-
-      await markConversationReadService(chatId);
       const messagesResponse = await getChatMessagesService(chatId);
+      if ((chatClearVersionsRef.current.get(chatKey) || 0) !== requestClearVersion) return;
       const normalizedMessages = filterBlockedMessages(normalizeChatMessages(
         messagesResponse.data?.data,
         chat
@@ -933,17 +1167,20 @@ export default function ChatSystem({ standalone = false }) {
     } catch (error) {
       setSendError(normalizeChatError(error));
     }
-  }, [clearUnreadForChat, filterBlockedMessages]);
+  }, [clearUnreadForChat, filterBlockedMessages, markChatAsRead]);
 
   const loadChannelHistory = useCallback(async (chat) => {
     if (!chat || chat.type !== "channel" || !chat.id) return;
 
-    loadedChatHistoryRef.current.add(chat.id);
+    const chatKey = String(chat.id);
+    const requestClearVersion = chatClearVersionsRef.current.get(chatKey) || 0;
+
+    loadedChatHistoryRef.current.add(chatKey);
 
     try {
-      clearUnreadForChat({ chatId: chat.id });
-      await markConversationReadService(chat.id);
+      await markChatAsRead({ chatId: chat.id });
       const messagesResponse = await getChatMessagesService(chat.id);
+      if ((chatClearVersionsRef.current.get(chatKey) || 0) !== requestClearVersion) return;
       const normalizedMessages = filterBlockedMessages(normalizeChatMessages(
         messagesResponse.data?.data,
         chat,
@@ -960,7 +1197,7 @@ export default function ChatSystem({ standalone = false }) {
     } catch (error) {
       setSendError(normalizeChatError(error));
     }
-  }, [clearUnreadForChat, filterBlockedMessages]);
+  }, [filterBlockedMessages, markChatAsRead]);
 
   const loadOlderMessages = useCallback(async () => {
     if (!selectedChat || loadingOlderMessages) return;
@@ -1024,7 +1261,7 @@ export default function ChatSystem({ standalone = false }) {
         (conversation) => !isSelfConversation(conversation),
       );
       const readKeys = readConversationKeysRef.current;
-      const shouldKeepRead = (conversation) => {
+        const shouldKeepRead = (conversation) => {
         const conversationIds = [
           conversation?.chat_id,
           conversation?.chatId,
@@ -1036,9 +1273,27 @@ export default function ChatSystem({ standalone = false }) {
         const participants = Array.isArray(conversation?.participants)
           ? conversation.participants
           : [];
+        const conversationUserId = String(
+          conversation?.user_id ||
+            conversation?.userId ||
+            conversation?.peer_id ||
+            conversation?.peerId ||
+            conversation?.other_user_id ||
+            conversation?.otherUserId ||
+            "",
+        );
+        const conversationEmail = String(
+          conversation?.email ||
+            conversation?.email_id ||
+            conversation?.user_email ||
+            conversation?.userEmail ||
+            "",
+        ).toLowerCase();
 
         return (
           conversationIds.some((value) => readKeys.has(`chat:${value}`)) ||
+          (conversationUserId && readKeys.has(`user:${conversationUserId}`)) ||
+          (conversationEmail && readKeys.has(`email:${conversationEmail}`)) ||
           participants.some((participant) => {
             const participantId = String(getBuddySendId(participant) || "");
             const participantEmail = String(getBuddyEmail(participant) || "").toLowerCase();
@@ -1244,7 +1499,7 @@ export default function ChatSystem({ standalone = false }) {
     loadedChatHistoryRef.current.delete(sendId);
     clearUnreadForChat({ chatId: directConversationId, userId: sendId, email });
     if (directConversationId) {
-      markConversationReadService(directConversationId).catch(() => {});
+      markChatAsRead({ chatId: directConversationId, userId: sendId, email }).catch(() => {});
     }
     navigate(`${CHAT_APP_BASE_PATH}/${encodeURIComponent(sendId)}`);
   };
@@ -1268,7 +1523,7 @@ export default function ChatSystem({ standalone = false }) {
     setSendError("");
     loadedChatHistoryRef.current.delete(channelId);
     clearUnreadForChat({ chatId: channelId });
-    markConversationReadService(channelId).catch(() => {});
+    markChatAsRead({ chatId: channelId }).catch(() => {});
     navigate(`${CHAT_APP_BASE_PATH}/${encodeURIComponent(channelId)}`);
   };
 
@@ -1290,6 +1545,10 @@ export default function ChatSystem({ standalone = false }) {
 
   const handleCreateGroup = async () => {
     if (creatingGroup) return;
+    if (!groupTitle.trim()) {
+      setGroupError("Enter a group name.");
+      return;
+    }
     if (groupUserIds.length === 0) {
       setGroupError("Select at least one person.");
       return;
@@ -1300,7 +1559,7 @@ export default function ChatSystem({ standalone = false }) {
 
     try {
       const response = await createGroupChatService({
-        title: groupTitle.trim() || "Group chat",
+        title: groupTitle.trim(),
         userIds: groupUserIds,
       });
       const conversation = response.data?.data;
@@ -1450,16 +1709,68 @@ export default function ChatSystem({ standalone = false }) {
   const handleClearChat = async () => {
     if (!selectedChat) return;
     const chatId = selectedChat.chatId || selectedChat.id;
-    if (!window.confirm("Clear all messages from this chat for your account? Other participants will keep their history.")) return;
+    const confirmed = await requestConfirmation({
+      title: "Clear chat?",
+      message: "Clear all messages from this chat for your account? Other participants will keep their history.",
+      confirmLabel: "Clear chat",
+    });
+    if (!confirmed) return;
 
     try {
       await clearChatHistoryService(chatId);
-      setMessagesByChat((prev) => ({ ...prev, [selectedChat.id]: [] }));
+      const clearedKeys = [
+        selectedChat.id,
+        selectedChat.chatId,
+        selectedChat.raw?.id,
+        selectedChat.raw?.chat_id,
+        selectedChat.raw?.chatId,
+        getChannelId(selectedChat.raw),
+      ].filter(Boolean).map(String);
+      clearedKeys.forEach((key) => {
+        chatClearVersionsRef.current.set(
+          key,
+          (chatClearVersionsRef.current.get(key) || 0) + 1,
+        );
+      });
+      setMessagesByChat((prev) => {
+        const next = { ...prev };
+        clearedKeys.forEach((key) => { next[key] = []; });
+        return next;
+      });
       setMessagePaginationByChat((prev) => ({
         ...prev,
         [selectedChat.id]: { hasMore: false, nextCursor: null },
       }));
       clearUnreadForChat({ chatId, userId: selectedChat.type === "person" ? selectedChat.id : "" });
+      setChannels((prev) =>
+        prev.map((item) => {
+          const itemIds = [
+            item?.id,
+            item?.chat_id,
+            item?.chatId,
+            getChannelId(item),
+          ].filter(Boolean).map(String);
+          const selectedIds = [selectedChat.id, selectedChat.chatId]
+            .filter(Boolean)
+            .map(String);
+          return itemIds.some((itemId) => selectedIds.includes(itemId))
+            ? {
+                ...item,
+                lastMessage: null,
+                last_message: null,
+                lastMessageAt: null,
+                last_message_at: null,
+              }
+            : item;
+        }),
+      );
+      setBuddies((prev) =>
+        prev.map((buddy) =>
+          selectedChat.type === "person" && String(getBuddySendId(buddy)) === String(selectedChat.id)
+            ? { ...buddy, lastMessage: null, last_message: null, lastMessageAt: null, last_message_at: null }
+            : buddy,
+        ),
+      );
     } catch (error) {
       setSendError(normalizeChatError(error));
     }
@@ -1487,6 +1798,19 @@ export default function ChatSystem({ standalone = false }) {
       navigate(CHAT_APP_BASE_PATH);
     } catch (error) {
       setSendError(normalizeChatError(error));
+    }
+  };
+
+  const handleTransferOwnership = async (chatId, userId) => {
+    if (!chatId || !userId) return;
+
+    try {
+      await transferGroupOwnershipService(chatId, userId);
+      await fetchChatData();
+      setSendError("");
+    } catch (error) {
+      setSendError(normalizeChatError(error));
+      throw error;
     }
   };
 
@@ -1537,18 +1861,74 @@ export default function ChatSystem({ standalone = false }) {
         return nextUser;
       });
     } catch (error) {
+      // Keep profile uploads usable when S3 is temporarily unreachable.
+      if (file.size <= 350_000) {
+        try {
+          const dataUrl = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = reject;
+            reader.readAsDataURL(file);
+          });
+          const response = await updateChatAvatarUrlService(dataUrl);
+          const updatedUser = response.data?.data?.user;
+          const nextAvatarUrl = getImageUrl(updatedUser);
+          setProfileUser((prev) => {
+            const nextUser = { ...(prev || {}), ...(updatedUser || {}), avatarUrl: nextAvatarUrl, imageUrl: nextAvatarUrl };
+            localStorage.setItem("user", JSON.stringify(nextUser));
+            return nextUser;
+          });
+          setLoadError("");
+          return;
+        } catch (fallbackError) {
+          setLoadError(normalizeChatError(fallbackError));
+          return;
+        }
+      }
       setLoadError(normalizeChatError(error));
     } finally {
       setAvatarUploading(false);
     }
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    const conversationIds = new Set([
+      ...channels.map((channel) =>
+        channel?.chat_id || channel?.chatId || getChannelId(channel),
+      ),
+      ...buddies.map((buddy) =>
+        buddy?.directConversationId || buddy?.chat_id || buddy?.chatId,
+      ),
+      selectedChat?.chatId,
+    ].filter(Boolean).map(String));
+
+    const directUserIds = buddies
+      .map((buddy) => String(getBuddySendId(buddy) || ""))
+      .filter(Boolean);
+    const openedConversationIds = await Promise.allSettled(
+      directUserIds.map(async (userId) =>
+        getConversationIdFromResponse(await openDirectChatService(userId)),
+      ),
+    );
+
+    openedConversationIds.forEach((result) => {
+      if (result.status === "fulfilled" && result.value) {
+        conversationIds.add(String(result.value));
+      }
+    });
+
+    await Promise.allSettled(
+      [...conversationIds].map((chatId) => markConversationReadService(chatId)),
+    );
+
     clearAuthToken();
-    sessionStorage.removeItem("user");
+    sessionStorage.clear();
+    localStorage.clear();
     setActiveCall(null);
     setIncomingCall(null);
-    navigate("/login", { replace: true });
+    // Reload the app at the public route so no mounted chat effects can
+    // continue using the previous authenticated session.
+    window.location.replace("http://127.0.0.1:5174/login");
   };
 
   const handleStartConversationCall = async (type, options = {}) => {
@@ -1569,10 +1949,7 @@ export default function ChatSystem({ standalone = false }) {
 
       if (!chatId && selectedChat?.type === "person") {
         const openResponse = await openDirectChatService(selectedChat.id);
-        chatId =
-          openResponse.data?.data?.chat_id ||
-          openResponse.data?.data?.data?.chat_id ||
-          null;
+        chatId = getConversationIdFromResponse(openResponse);
 
         if (chatId) {
           setSelectedChat((prev) =>
@@ -1743,10 +2120,7 @@ export default function ChatSystem({ standalone = false }) {
         }
       } else if (!chatId) {
         const openResponse = await openDirectChatService(selectedChat.id);
-        chatId =
-          openResponse.data?.data?.chat_id ||
-          openResponse.data?.data?.data?.chat_id ||
-          null;
+        chatId = getConversationIdFromResponse(openResponse);
 
         if (chatId) {
           setSelectedChat((prev) =>
@@ -1871,7 +2245,7 @@ export default function ChatSystem({ standalone = false }) {
         ? [messages]
         : [];
 
-    if (!selectedChat || messageList.length === 0) return;
+    if (!selectedChat || messageList.length === 0) return false;
     const chatId = selectedChat.type === "channel" ? selectedChat.id : selectedChat.chatId;
     // Message IDs can come from REST, realtime events, or optimistic state.
     // Keep them as strings so the request and local state use the same key.
@@ -1879,31 +2253,57 @@ export default function ChatSystem({ standalone = false }) {
       .map((message) => message?.id)
       .filter((messageId) => messageId !== null && messageId !== undefined && messageId !== "")
       .map(String);
-    if (!chatId || messageIds.length === 0) return;
-    if (!window.confirm(`Delete ${messageIds.length === 1 ? "this message" : `${messageIds.length} messages`}?`)) return;
+    if (!chatId || messageIds.length === 0) return false;
+    const confirmed = await requestConfirmation({
+      title: messageIds.length === 1 ? "Delete message?" : "Delete messages?",
+      message: `Delete ${messageIds.length === 1 ? "this message" : `${messageIds.length} messages`}? This cannot be undone.`,
+      confirmLabel: "Delete",
+    });
+    if (!confirmed) return false;
 
     try {
-      const responses = await Promise.all(
+      const results = await Promise.allSettled(
         messageIds.map((messageId) => deleteConversationMessageService(chatId, messageId)),
       );
-      const deletedMessages = responses
-        .map((response) => normalizeRealtimeMessage(response.data?.data, {
+      const successfulIds = new Set();
+      const deletedById = new Map();
+
+      results.forEach((result, index) => {
+        if (result.status !== "fulfilled") return;
+        const messageId = messageIds[index];
+        successfulIds.add(messageId);
+        const deletedMessage = normalizeRealtimeMessage(result.value.data?.data, {
           ...selectedChat,
           currentUserId,
-        }))
-        .filter(Boolean);
-      const deletedById = new Map(
-        deletedMessages.map((message) => [String(message.id), message]),
-      );
+        });
+        if (deletedMessage) deletedById.set(String(deletedMessage.id), deletedMessage);
+      });
+
+      if (successfulIds.size === 0) {
+        throw results.find((result) => result.status === "rejected")?.reason || new Error("Messages could not be deleted");
+      }
 
       setMessagesByChat((prev) => ({
         ...prev,
         [selectedChat.id]: (prev[selectedChat.id] || []).map((message) =>
-          deletedById.get(String(message.id)) || message,
+          successfulIds.has(String(message.id))
+            ? deletedById.get(String(message.id)) || {
+              ...message,
+              text: "This message was deleted",
+              deletedAt: new Date().toISOString(),
+              edited: false,
+            }
+            : message,
         ),
       }));
+
+      if (successfulIds.size !== messageIds.length) {
+        setSendError(`${messageIds.length - successfulIds.size} message(s) could not be deleted.`);
+      }
+      return true;
     } catch (error) {
       setSendError(normalizeChatError(error));
+      return false;
     }
   };
 
@@ -1911,9 +2311,14 @@ export default function ChatSystem({ standalone = false }) {
     const userId = message?.authorId;
     if (!userId) return;
     const isBlocked = blockedUserIds.includes(String(userId));
-    if (!window.confirm(isBlocked
-      ? "Unblock this user?"
-      : "Block this user? You will no longer receive messages from them.")) return;
+    const confirmed = await requestConfirmation({
+      title: isBlocked ? "Unblock user?" : "Block user?",
+      message: isBlocked
+        ? "Allow messages from this user again?"
+        : "You will no longer receive messages from this user.",
+      confirmLabel: isBlocked ? "Unblock" : "Block",
+    });
+    if (!confirmed) return;
 
     try {
       setBlockedUserIds((prev) => {
@@ -1982,16 +2387,17 @@ export default function ChatSystem({ standalone = false }) {
   return (
     <>
       <Box
+        className="chat-shell"
         sx={{
           height: standalone ? "100vh" : "calc(100vh - 48px)",
           minHeight: standalone ? "100vh" : { xs: 0, md: 620 },
           display: "grid",
           gridTemplateColumns: { xs: "1fr", sm: "320px minmax(0, 1fr)", md: "380px minmax(0, 1fr)" },
-          bgcolor: "background.default",
+          bgcolor: "var(--chat-canvas)",
           border: standalone ? "none" : "1px solid",
           borderColor: "divider",
           borderRadius: standalone ? 0 : 3,
-          boxShadow: standalone ? "none" : "0 14px 40px rgba(35,42,70,.10)",
+          boxShadow: standalone ? "none" : "0 18px 50px rgba(35,42,70,.12)",
           overflow: "hidden",
         }}
       >
@@ -2004,7 +2410,10 @@ export default function ChatSystem({ standalone = false }) {
         loadError={loadError}
         loading={loading}
         onAvatarUpload={handleAvatarUpload}
-        onCreateGroup={openGroupDialog}
+        onCreateGroup={() => navigate(`${CHAT_APP_BASE_PATH}/groups/new`)}
+        settingsPage={settingsPage}
+        onSettingsOpen={() => navigate(`${CHAT_APP_BASE_PATH}/settings`)}
+        onSettingsClose={() => navigate(CHAT_APP_BASE_PATH)}
         onRefresh={fetchChatData}
         onSelectBuddy={selectBuddy}
         onSelectChannel={selectChannel}
@@ -2050,6 +2459,7 @@ export default function ChatSystem({ standalone = false }) {
         handleSend={handleSend}
         onEndActiveCall={handleEndActiveCall}
         onLeaveGroup={handleLeaveGroup}
+        onTransferOwnership={handleTransferOwnership}
         inputValue={inputValue}
         mutedGroupIds={mutedChatIds}
         mentionableUsers={selectedMentionableUsers}
@@ -2103,9 +2513,42 @@ export default function ChatSystem({ standalone = false }) {
         message={callNotice}
         anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
       />
+      <Dialog
+        open={Boolean(confirmationDialog)}
+        onClose={() => closeConfirmation(false)}
+        fullWidth
+        maxWidth="xs"
+        PaperProps={{ sx: { borderRadius: 3 } }}
+      >
+        <DialogTitle sx={{ pb: 1 }}>
+          {confirmationDialog?.title}
+        </DialogTitle>
+        <DialogContent>
+          <Typography color="text.secondary">
+            {confirmationDialog?.message}
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => closeConfirmation(false)} sx={{ textTransform: "none" }}>
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            color={confirmationDialog?.confirmColor || "error"}
+            onClick={() => closeConfirmation(true)}
+            sx={{ textTransform: "none", borderRadius: 2, fontWeight: 700 }}
+          >
+            {confirmationDialog?.confirmLabel || "Confirm"}
+          </Button>
+        </DialogActions>
+      </Dialog>
       <GroupCreationDialog
-        open={groupDialogOpen}
-        onClose={() => setGroupDialogOpen(false)}
+        open={groupDialogOpen || groupPage}
+        page={groupPage}
+        onClose={() => {
+          setGroupDialogOpen(false);
+          if (groupPage) navigate(CHAT_APP_BASE_PATH);
+        }}
         onCreate={handleCreateGroup}
         onSearchChange={setGroupSearch}
         onSelectMember={toggleGroupUser}

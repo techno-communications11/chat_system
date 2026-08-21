@@ -34,7 +34,7 @@ const start = async () => {
       : http.createServer(app);
     initChatSocket(httpServer, allowedOrigins);
 
-    server = httpServer.listen(PORT, () => {
+    server = httpServer.listen(PORT, "127.0.0.1", () => {
       console.log(
         `Chat backend running on ${httpsKeyPath && httpsCertPath ? "https" : "http"}://localhost:${PORT}`,
       );
