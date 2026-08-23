@@ -42,6 +42,7 @@ import {
 } from "./chatHelpers";
 import {
   showChatNotification,
+  playCallNotificationSound,
   playMessageNotificationSound,
 } from "./chatNotifications";
 import { useChatRealtime } from "./useChatRealtime";
@@ -734,11 +735,14 @@ export default function ChatSystem({ standalone = false }) {
           buddies.find((buddy) => getBuddySendId(buddy) === senderId)?.name ||
           "Someone";
 
-        showChatNotification({
+         showChatNotification({
           title: senderName,
           body: getMessageText(message),
           icon: getImageUrl(message?.sender),
-          tag: `chat-${chatId}`,
+           tag: `chat-${chatId}`,
+           url: localKey
+             ? `${CHAT_APP_BASE_PATH}/${encodeURIComponent(localKey)}`
+             : CHAT_APP_BASE_PATH,
           onClick: () => {
             if (localKey) {
               navigate(`${CHAT_APP_BASE_PATH}/${encodeURIComponent(localKey)}`);
@@ -857,11 +861,12 @@ export default function ChatSystem({ standalone = false }) {
         "Someone";
       const messagePreview = getMessageText(message);
 
-      showChatNotification({
-        title: `${actorName} reacted ${reaction.emoji}`,
-        body: messagePreview ? `To your message: ${messagePreview}` : "To your message",
-        icon: getImageUrl(reaction?.actor),
-        tag: `reaction-${chatId}-${message?.id || message?.message_id || ""}`,
+       showChatNotification({
+         title: `${actorName} reacted ${reaction.emoji}`,
+         body: messagePreview ? `To your message: ${messagePreview}` : "To your message",
+         icon: getImageUrl(reaction?.actor),
+         tag: `reaction-${chatId}-${message?.id || message?.message_id || ""}`,
+         url: `${CHAT_APP_BASE_PATH}/${encodeURIComponent(localKey || chatId)}`,
         onClick: () => {
           if (localKey) {
             navigate(`${CHAT_APP_BASE_PATH}/${encodeURIComponent(localKey)}`);
@@ -921,7 +926,6 @@ export default function ChatSystem({ standalone = false }) {
     if (activeCall?.id || incomingCall?.id) return;
     const callerId = call.startedBy?.id || call.startedBy?.userId || call.startedBy?.user_id;
     if (blockedUserIds.includes(String(callerId))) return;
-    if (mutedChatIds.includes(String(call.chatId || call.chat_id || ""))) return;
     if (String(callerId) === currentUserId) {
       setActiveCall(call);
       return;
@@ -932,8 +936,11 @@ export default function ChatSystem({ standalone = false }) {
       title: `Incoming ${call.type === "video" ? "video" : "audio"} call`,
       body: `${call.startedBy?.name || "A chat user"} is calling you`,
       tag: `chat-call-${call.id}`,
+      url: `${CHAT_APP_BASE_PATH}/${encodeURIComponent(call.chatId || call.chat_id || "")}`,
+      requireInteraction: true,
     });
-  }, [activeCall?.id, blockedUserIds, currentUserId, incomingCall?.id, mutedChatIds]);
+    playCallNotificationSound();
+  }, [activeCall?.id, blockedUserIds, currentUserId, incomingCall?.id]);
 
   const handleRealtimeCallAccepted = useCallback(({ call }) => {
     if (!call?.id) return;

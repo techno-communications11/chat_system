@@ -7,7 +7,12 @@ import ChatConversation from "../modules/chatConversation.module.js";
 import ChatConversationParticipant from "../modules/chatConversationParticipant.module.js";
 
 let io = null;
-const tenantRoom = (tenantId) => crypto.createHash("sha256").update(String(tenantId)).digest("hex").slice(0, 32);
+const tenantRoom = (tenantId) =>
+  crypto
+    .createHash("sha256")
+    .update(String(tenantId))
+    .digest("hex")
+    .slice(0, 32);
 const room = (tenantId, suffix) => `tenant:${tenantRoom(tenantId)}:${suffix}`;
 
 const resolveConversation = async ({ tenantId, conversationId }) => {
@@ -17,17 +22,17 @@ const resolveConversation = async ({ tenantId, conversationId }) => {
   return ChatConversation.findOne({
     where: {
       appName: tenantId,
-      [Op.or]: [
-        { publicId: requestedId },
-        { id: Number(requestedId) || 0 },
-      ],
+      [Op.or]: [{ publicId: requestedId }, { id: Number(requestedId) || 0 }],
     },
     attributes: ["id", "publicId"],
   });
 };
 
 const getPublicConversationId = async (appName, conversationId) => {
-  const conversation = await resolveConversation({ tenantId: appName, conversationId });
+  const conversation = await resolveConversation({
+    tenantId: appName,
+    conversationId,
+  });
   return String(conversation?.publicId || conversationId);
 };
 
@@ -38,7 +43,11 @@ const getTokenFromSocket = (socket) =>
 
 const canAccessConversation = async ({ tenantId, userId, conversationId }) => {
   const identity = await ChatIdentity.findOne({
-    where: { appName: tenantId, appUserId: String(userId), provider: "local_chat" },
+    where: {
+      appName: tenantId,
+      appUserId: String(userId),
+      provider: "local_chat",
+    },
   });
   if (!identity) return false;
 
@@ -79,7 +88,9 @@ export const initChatSocket = (httpServer, allowedOrigins) => {
       }
 
       const auth = verifyChatToken(token, {
-        requestedApp: socket.handshake.auth?.appName || socket.handshake.headers?.["x-chat-app-name"],
+        requestedApp:
+          socket.handshake.auth?.appName ||
+          socket.handshake.headers?.["x-chat-app-name"],
       });
       const decoded = auth.payload;
       socket.data.appName = auth.tenantId;
@@ -119,11 +130,13 @@ export const initChatSocket = (httpServer, allowedOrigins) => {
 
     socket.on("join:conversation", async (chatId, acknowledge) => {
       try {
-        const allowed = chatId && await canAccessConversation({
-          tenantId: appName,
-          userId,
-          conversationId: String(chatId),
-        });
+        const allowed =
+          chatId &&
+          (await canAccessConversation({
+            tenantId: appName,
+            userId,
+            conversationId: String(chatId),
+          }));
         if (!allowed) {
           acknowledge?.({ ok: false, code: "CHAT_CONVERSATION_FORBIDDEN" });
           return;
@@ -144,21 +157,25 @@ export const initChatSocket = (httpServer, allowedOrigins) => {
     socket.on("typing:update", async (payload = {}, acknowledge) => {
       try {
         const chatId = String(payload.chatId || "");
-        const allowed = chatId && await canAccessConversation({
-          tenantId: appName,
-          userId,
-          conversationId: chatId,
-        });
+        const allowed =
+          chatId &&
+          (await canAccessConversation({
+            tenantId: appName,
+            userId,
+            conversationId: chatId,
+          }));
         if (!allowed) {
           acknowledge?.({ ok: false, code: "CHAT_CONVERSATION_FORBIDDEN" });
           return;
         }
-        socket.to(room(appName, `conversation:${chatId}`)).emit("typing:update", {
-          chatId,
-          userId: String(userId),
-          name: socket.data.displayName,
-          typing: Boolean(payload.typing),
-        });
+        socket
+          .to(room(appName, `conversation:${chatId}`))
+          .emit("typing:update", {
+            chatId,
+            userId: String(userId),
+            name: socket.data.displayName,
+            typing: Boolean(payload.typing),
+          });
         acknowledge?.({ ok: true });
       } catch {
         acknowledge?.({ ok: false, code: "CHAT_TYPING_FAILED" });
@@ -169,11 +186,14 @@ export const initChatSocket = (httpServer, allowedOrigins) => {
       try {
         const chatId = String(payload.chatId || "");
         const callId = String(payload.callId || "");
-        const allowed = chatId && callId && await canAccessConversation({
-          tenantId: appName,
-          userId,
-          conversationId: chatId,
-        });
+        const allowed =
+          chatId &&
+          callId &&
+          (await canAccessConversation({
+            tenantId: appName,
+            userId,
+            conversationId: chatId,
+          }));
         if (!allowed) {
           acknowledge?.({ ok: false, code: "CHAT_CONVERSATION_FORBIDDEN" });
           return;
@@ -218,23 +238,29 @@ export const initChatSocket = (httpServer, allowedOrigins) => {
         const chatId = String(payload.chatId || "");
         const callId = String(payload.callId || "");
         const signal = payload.signal;
-        const allowed = chatId && callId && signal && await canAccessConversation({
-          tenantId: appName,
-          userId,
-          conversationId: chatId,
-        });
+        const allowed =
+          chatId &&
+          callId &&
+          signal &&
+          (await canAccessConversation({
+            tenantId: appName,
+            userId,
+            conversationId: chatId,
+          }));
         if (!allowed) {
           acknowledge?.({ ok: false, code: "CHAT_CONVERSATION_FORBIDDEN" });
           return;
         }
 
-        socket.to(room(appName, `call:${chatId}:${callId}`)).emit("call:signal", {
-          chatId,
-          callId,
-          signal,
-          fromUserId: String(userId),
-          fromName: socket.data.displayName,
-        });
+        socket
+          .to(room(appName, `call:${chatId}:${callId}`))
+          .emit("call:signal", {
+            chatId,
+            callId,
+            signal,
+            fromUserId: String(userId),
+            fromName: socket.data.displayName,
+          });
         acknowledge?.({ ok: true });
       } catch {
         acknowledge?.({ ok: false, code: "CHAT_CALL_SIGNAL_FAILED" });
@@ -249,7 +275,9 @@ export const getChatSocket = () => io;
 
 export const isUserConnected = async (appName, userId) => {
   if (!io || !userId) return false;
-  const sockets = await io.in(room(appName, `user:${String(userId)}`)).fetchSockets();
+  const sockets = await io
+    .in(room(appName, `user:${String(userId)}`))
+    .fetchSockets();
   return sockets.length > 0;
 };
 

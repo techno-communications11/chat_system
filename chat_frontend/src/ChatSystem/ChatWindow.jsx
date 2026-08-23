@@ -991,7 +991,7 @@ export default function ChatWindow({
   const [mentionQuery, setMentionQuery] = useState("");
   const [emojiAnchorEl, setEmojiAnchorEl] = useState(null);
   const [forwardMessage, setForwardMessage] = useState(null);
-  const [searchAnchorEl, setSearchAnchorEl] = useState(null);
+  const [messageSearchOpen, setMessageSearchOpen] = useState(false);
   const [messageSearchTerm, setMessageSearchTerm] = useState("");
   const [messageSearchResults, setMessageSearchResults] = useState([]);
   const [messageSearchError, setMessageSearchError] = useState("");
@@ -1014,7 +1014,6 @@ export default function ChatWindow({
     return [getBuddyName(user), getBuddyEmail(user)]
       .some((value) => String(value || "").toLowerCase().includes(query));
   });
-  const messageSearchOpen = Boolean(searchAnchorEl);
   const canSend = Boolean(inputValue.trim()) || pendingFiles.length > 0;
   const pinnedMessages = currentMessages.filter(
     (message) => message.metadata?.pinned,
@@ -1148,7 +1147,7 @@ export default function ChatWindow({
     <>
       <Box
         className={selectedChat ? "d-flex" : "d-none d-md-flex"}
-        sx={{ minHeight: 0 }}
+        sx={{ width: "100%", minWidth: 0, minHeight: 0, overflow: "hidden" }}
       >
         {/* Sidebar */}
         <Sidebar
@@ -1160,7 +1159,8 @@ export default function ChatWindow({
         {selectedChat ? (
           <Box
             sx={{
-              flex: 1,
+               flex: 1,
+               width: 0,
               display: "flex",
               flexDirection: "column",
               minWidth: 0,
@@ -1179,7 +1179,12 @@ export default function ChatWindow({
               borderBottom="0"
               sx={{ boxShadow: "0 4px 18px rgba(0,0,0,.08)", zIndex: 1 }}
             >
-              <Box display="flex" alignItems="center" gap={1.25}>
+              <Box
+                display="flex"
+                alignItems="center"
+                gap={1.25}
+                sx={{ minWidth: 0, flex: 1, overflow: "hidden" }}
+              >
                 <IconButton
                   size="small"
                   sx={{ display: { md: "none", xs: "inline-flex" } }}
@@ -1209,11 +1214,12 @@ export default function ChatWindow({
                   )}
                 </Avatar>
 
-                <Box>
+                 <Box sx={{ minWidth: 0, overflow: "hidden" }}>
                   <Typography
                     fontWeight={750}
                     fontSize={16}
                     color="text.primary"
+                    noWrap
                   >
                     {selectedChat.title}
                   </Typography>
@@ -1232,6 +1238,7 @@ export default function ChatWindow({
                       variant="caption"
                       color="text.secondary"
                       fontSize={12}
+                      noWrap
                     >
                       {selectedChat.type === "channel"
                         ? getGroupMemberSummary(selectedChat, currentUser)
@@ -1245,19 +1252,84 @@ export default function ChatWindow({
                 direction="row"
                 alignItems="center"
                 spacing={{ xs: 0.15, sm: 0.5 }}
-                sx={{ flexShrink: 0, maxWidth: { xs: "52%", sm: "none" }, overflow: "hidden" }}
+                sx={{
+                  position: "relative",
+                  flexShrink: 0,
+                  width: { xs: 164, sm: "auto" },
+                  maxWidth: "100%",
+                  overflow: "visible",
+                }}
               >
-                <ToolBtn
-                  title="Search messages"
-                  icon={<SearchIcon sx={{ fontSize: 16 }} />}
-                  onClick={(event) => setSearchAnchorEl(event.currentTarget)}
-                />
+                <Box sx={{ width: 34, flexShrink: 0 }} />
+                <Box
+                  sx={{
+                    position: "absolute",
+                    left: messageSearchOpen ? "auto" : 0,
+                    right: messageSearchOpen ? 0 : "auto",
+                    top: "50%",
+                    zIndex: 2,
+                    height: 34,
+                    transform: "translateY(-50%)",
+                    width: messageSearchOpen ? "min(280px, calc(100vw - 16px))" : 34,
+                    maxWidth: "calc(100vw - 16px)",
+                    minWidth: 34,
+                    overflow: "hidden",
+                    transition: "width 240ms cubic-bezier(0.4, 0, 0.2, 1)",
+                    willChange: "width",
+                  }}
+                >
+                  {messageSearchOpen ? (
+                    <Box
+                      sx={{
+                        display: "flex",
+                        alignItems: "center",
+                        width: "100%",
+                        bgcolor: "var(--chat-soft)",
+                        border: "1px solid",
+                        borderColor: "primary.main",
+                        borderRadius: 2,
+                        px: 1,
+                      }}
+                    >
+                      <SearchIcon sx={{ fontSize: 17, color: "text.secondary", mr: 0.5 }} />
+                      <TextField
+                        autoFocus
+                        fullWidth
+                        variant="standard"
+                        placeholder="Search messages"
+                        value={messageSearchTerm}
+                        onChange={(event) => setMessageSearchTerm(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") runMessageSearch();
+                          if (event.key === "Escape") setMessageSearchOpen(false);
+                        }}
+                        InputProps={{ disableUnderline: true }}
+                        sx={{ "& input": { py: 0.75, fontSize: 13 } }}
+                      />
+                      <IconButton
+                        size="small"
+                        aria-label="Close message search"
+                        onClick={() => setMessageSearchOpen(false)}
+                      >
+                        <CloseIcon sx={{ fontSize: 17 }} />
+                      </IconButton>
+                    </Box>
+                  ) : (
+                    <ToolBtn
+                      title="Search messages"
+                      icon={<SearchIcon sx={{ fontSize: 16 }} />}
+                      onClick={() => setMessageSearchOpen(true)}
+                    />
+                  )}
+                </Box>
                 {selectedChat.type === "channel" && (
-                  <ToolBtn
-                    title="Add people"
-                    icon={<GroupAddIcon sx={{ fontSize: 17 }} />}
-                    onClick={onOpenAddMembers}
-                  />
+                  <Box sx={{ display: { xs: "none", sm: "block" } }}>
+                    <ToolBtn
+                      title="Add people"
+                      icon={<GroupAddIcon sx={{ fontSize: 17 }} />}
+                      onClick={onOpenAddMembers}
+                    />
+                  </Box>
                 )}
                 <ToolBtn
                   title="Voice call"
@@ -1271,13 +1343,16 @@ export default function ChatWindow({
                   disabled={callStarting}
                   onClick={() => onStartConversationCall?.("video")}
                 />
-                <ToolBtn
-                  title="Schedule call"
-                  icon={<CalendarMonthIcon sx={{ fontSize: 17 }} />}
-                  onClick={() => setScheduleCallDialogOpen(true)}
-                />
+                <Box sx={{ display: "block" }}>
+                  <ToolBtn
+                    title="Schedule call"
+                    icon={<CalendarMonthIcon sx={{ fontSize: 17 }} />}
+                    onClick={() => setScheduleCallDialogOpen(true)}
+                  />
+                </Box>
                 <Box
                   sx={{
+                    display: { xs: "none", sm: "block" },
                     width: 0.5,
                     height: 18,
                     bgcolor: "divider",
@@ -1398,49 +1473,19 @@ export default function ChatWindow({
               pinnedCount={pinnedMessages.length}
             />
 
-            <Popover
-              open={messageSearchOpen}
-              anchorEl={searchAnchorEl}
-              onClose={() => setSearchAnchorEl(null)}
-              anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
-              transformOrigin={{ vertical: "top", horizontal: "right" }}
-              PaperProps={{
-                sx: {
-                  width: 340,
-                  maxWidth: "calc(100vw - 32px)",
-                  borderRadius: "10px",
-                  border: "0.5px solid",
+            {messageSearchOpen && (
+              <Box
+                sx={{
+                  px: { xs: 1, sm: 2 },
+                  py: 1,
+                  borderBottom: "1px solid",
                   borderColor: "divider",
-                  boxShadow: "0 8px 24px rgba(0,0,0,0.12)",
-                  p: 1.25,
-                },
-              }}
-            >
-              <Stack direction="row" spacing={1}>
-                <TextField
-                  autoFocus
-                  fullWidth
-                  size="small"
-                  placeholder="Search messages"
-                  value={messageSearchTerm}
-                  onChange={(event) => setMessageSearchTerm(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") runMessageSearch();
-                  }}
-                />
-                <Button
-                  variant="contained"
-                  onClick={runMessageSearch}
-                  disabled={messageSearchLoading || !messageSearchTerm.trim()}
-                  sx={{ textTransform: "none", bgcolor: BRAND }}
-                >
-                  {messageSearchLoading ? (
-                    <CircularProgress color="inherit" size={16} />
-                  ) : (
-                    "Go"
-                  )}
-                </Button>
-              </Stack>
+                  bgcolor: "background.paper",
+                }}
+              >
+              {messageSearchLoading && (
+                <CircularProgress size={16} sx={{ display: "block", mb: 0.5 }} />
+              )}
               {messageSearchError && (
                 <Typography color="error" fontSize={12} sx={{ mt: 1 }}>
                   {messageSearchError}
@@ -1477,7 +1522,8 @@ export default function ChatWindow({
                     </Typography>
                   )}
               </List>
-            </Popover>
+              </Box>
+            )}
 
             <Box
               ref={chatBoxRef}
@@ -1485,6 +1531,7 @@ export default function ChatWindow({
                 flex: 1,
                 minHeight: 0,
                 overflow: "auto",
+                overflowX: "hidden",
                 px: { xs: 0.5, sm: 1.5 },
                 py: { xs: 1, sm: 2 },
                 bgcolor: "background.paper",

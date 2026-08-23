@@ -32,6 +32,9 @@ export const requestBody = (schema) => ({
   content: { "application/json": { schema } },
 });
 
-export const chatOperation = (method, operation) => ({
-  [method]: { tags: ["Chat"], ...operation },
+export const taggedOperation = (tag, method, operation) => ({
+  [method]: { tags: [tag], ...operation },
 });
+
+export const chatOperation = (method, operation) =>
+  taggedOperation("Chat", method, operation);

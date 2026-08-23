@@ -47,6 +47,33 @@ test("health and documentation endpoints are public", async () => {
   const document = JSON.parse(docs.body);
   assert.equal(document.openapi, "3.0.3");
   assert.ok(Object.keys(document.paths).length >= 30);
+  assert.deepEqual(document.tags.find((tag) => tag.name === "Calls"), {
+    name: "Calls",
+    description: "Audio/video conversation calls",
+  });
+  for (const path of [
+    "/chat-service/conversations/{chatId}/calls",
+    "/chat-service/calls/active",
+    "/chat-service/conversations/{chatId}/calls/{callId}/end",
+    "/chat-service/conversations/{chatId}/calls/{callId}/respond",
+  ]) {
+    for (const operation of Object.values(document.paths[path])) {
+      assert.deepEqual(operation.tags, ["Calls"]);
+    }
+  }
+  assert.deepEqual(
+    document.tags.filter((tag) => ["Groups", "Emoji"].includes(tag.name)).map((tag) => tag.name),
+    ["Groups", "Emoji"],
+  );
+  for (const [path, tag] of [
+    ["/chat-service/groups", "Groups"],
+    ["/chat-service/conversations/groups", "Groups"],
+    ["/chat-service/conversations/{chatId}/members", "Groups"],
+    ["/chat-service/conversations/{chatId}/messages/{messageId}/reactions", "Emoji"],
+    ["/chat-service/conversations/{chatId}/messages/{messageId}/reactions/{emoji}", "Emoji"],
+  ]) {
+    assert.deepEqual(Object.values(document.paths[path])[0].tags, [tag]);
+  }
 });
 
 const protectedRoutes = [

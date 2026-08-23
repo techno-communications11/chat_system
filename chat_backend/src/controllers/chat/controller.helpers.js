@@ -23,6 +23,21 @@ export const handleRequest = (handler) => async (req, res) => {
   }
 };
 
+// Adapter used by controllers whose only responsibility is mapping HTTP input
+// to a service command and formatting the standard API response.
+export const createActionController = ({
+  action,
+  message,
+  status = 200,
+  mapRequest = () => ({}),
+  authorize,
+}) => handleRequest(async (req, res) => {
+  const actor = actorFrom(req);
+  authorize?.(actor, req);
+  const data = await action({ actor, ...mapRequest(req) });
+  return sendSuccess(res, message, data, status);
+});
+
 export const actorFrom = (req) => getChatActor(req);
 
 export const requireChatAdmin = (actor) => {

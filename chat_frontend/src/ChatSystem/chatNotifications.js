@@ -40,6 +40,8 @@ export const showChatNotification = ({
   icon,
   tag,
   onClick,
+  url,
+  requireInteraction = false,
 }) => {
   if (!("Notification" in window)) return null;
   if (Notification.permission !== "granted") return null;
@@ -53,6 +55,8 @@ export const showChatNotification = ({
         icon: icon || undefined,
         tag: tag || undefined,
         renotify: true,
+        requireInteraction,
+        data: { url: url || "/" },
         silent: false,
         vibrate: [120, 60, 120],
       }))
@@ -64,6 +68,8 @@ export const showChatNotification = ({
     icon: icon || undefined,
     tag: tag || undefined,
     renotify: true,
+    requireInteraction,
+    data: { url: url || "/" },
     silent: false,
     vibrate: [120, 60, 120],
   });
@@ -99,6 +105,36 @@ export const playMessageNotificationSound = () => {
     gain.connect(context.destination);
     oscillator.start(start);
     oscillator.stop(start + 0.18);
+  } catch {
+    // Notification audio is best-effort and may be blocked by the browser.
+  }
+};
+
+export const playCallNotificationSound = () => {
+  if (!areChatNotificationsEnabled()) return;
+
+  try {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) return;
+    notificationAudioContext ||= new AudioContextClass();
+    const context = notificationAudioContext;
+    context.resume().catch(() => {});
+
+    [0, 0.28, 0.56].forEach((offset) => {
+      const oscillator = context.createOscillator();
+      const gain = context.createGain();
+      const start = context.currentTime + offset;
+      oscillator.type = "sine";
+      oscillator.frequency.setValueAtTime(1046, start);
+      oscillator.frequency.exponentialRampToValueAtTime(784, start + 0.18);
+      gain.gain.setValueAtTime(0.0001, start);
+      gain.gain.exponentialRampToValueAtTime(0.08, start + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.22);
+      oscillator.connect(gain);
+      gain.connect(context.destination);
+      oscillator.start(start);
+      oscillator.stop(start + 0.24);
+    });
   } catch {
     // Notification audio is best-effort and may be blocked by the browser.
   }

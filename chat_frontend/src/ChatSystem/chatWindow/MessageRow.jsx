@@ -106,6 +106,10 @@ export default function MessageRow({
       }}
       sx={{
         display: "flex",
+        width: "100%",
+        minWidth: 0,
+        maxWidth: "100%",
+        overflow: "hidden",
         justifyContent: isMe ? "flex-end" : "flex-start",
         gap: 1.25,
         px: 1,
@@ -138,7 +142,8 @@ export default function MessageRow({
           display: "flex",
           flexDirection: "column",
           alignItems: isMe ? "flex-end" : "flex-start",
-            maxWidth: { xs: "92%", sm: "82%", md: "68%" },
+          minWidth: 0,
+          maxWidth: { xs: "92%", sm: "82%", md: "68%" },
         }}
       >
         {showAvatar && !isMe && (
@@ -220,9 +225,9 @@ export default function MessageRow({
 
                 if (isImage && file.url) {
                   return (
-                    <Box key={file.id} sx={{ maxWidth: 320, borderRadius: 1.5, overflow: "hidden", border: "1px solid", borderColor: "divider", bgcolor: "background.paper" }}>
+                    <Box key={file.id} sx={{ width: "100%", maxWidth: "min(320px, 100%)", borderRadius: 1.5, overflow: "hidden", border: "1px solid", borderColor: "divider", bgcolor: "background.paper" }}>
                       <Link href={file.url} target="_blank" rel="noopener noreferrer" onClick={(event) => event.stopPropagation()}>
-                        <Box component="img" src={file.url} alt={file.name || "Shared image"} loading="lazy" sx={{ display: "block", width: "100%", maxHeight: 280, objectFit: "cover", cursor: "pointer", "&:hover": { opacity: 0.9 } }} />
+                        <Box component="img" src={file.url} alt={file.name || "Shared image"} loading="lazy" sx={{ display: "block", width: "100%", maxWidth: "100%", maxHeight: 280, objectFit: "cover", cursor: "pointer", "&:hover": { opacity: 0.9 } }} />
                       </Link>
                       <Box display="flex" alignItems="center" gap={0.5} sx={{ px: 1, py: 0.5 }}>
                         <Typography fontSize={11} color="text.secondary" noWrap sx={{ minWidth: 0, flex: 1 }}>
@@ -249,7 +254,7 @@ export default function MessageRow({
                 }
 
                 return (
-                  <Box key={file.id} display="flex" alignItems="center" gap={1} sx={{ border: "0.5px solid", borderColor: "divider", borderRadius: 1, px: 1, py: 0.875, bgcolor: "background.paper", maxWidth: 360 }}>
+                  <Box key={file.id} display="flex" alignItems="center" gap={1} sx={{ width: "100%", maxWidth: "min(360px, 100%)", minWidth: 0, border: "0.5px solid", borderColor: "divider", borderRadius: 1, px: 1, py: 0.875, bgcolor: "background.paper" }}>
                     <Box sx={{ width: 34, height: 34, borderRadius: 1, bgcolor: BRAND_SOFT, color: BRAND_TEXT, display: "grid", placeItems: "center", flexShrink: 0 }}>
                       <InsertDriveFileIcon sx={{ fontSize: 18 }} />
                     </Box>
