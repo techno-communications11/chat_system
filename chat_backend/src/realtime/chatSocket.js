@@ -5,6 +5,10 @@ import { verifyChatToken } from "../auth/chatAuth.js";
 import ChatIdentity from "../modules/chatIdentity.module.js";
 import ChatConversation from "../modules/chatConversation.module.js";
 import ChatConversationParticipant from "../modules/chatConversationParticipant.module.js";
+import ChatCall from "../modules/chatCall.module.js";
+
+const activeCallStatuses = ["ringing", "connecting", "accepted"];
+const maxSignalBytes = 256 * 1024;
 
 let io = null;
 const tenantRoom = (tenantId) =>
@@ -199,6 +203,23 @@ export const initChatSocket = (httpServer, allowedOrigins) => {
           return;
         }
 
+        const call = await ChatCall.findOne({
+          where: {
+            appName,
+            conversationId: (await resolveConversation({
+              tenantId: appName,
+              conversationId: chatId,
+            }))?.id,
+            callId,
+            status: activeCallStatuses,
+          },
+          attributes: ["callId"],
+        });
+        if (!call) {
+          acknowledge?.({ ok: false, code: "CHAT_CALL_NOT_FOUND" });
+          return;
+        }
+
         const callRoom = room(appName, `call:${chatId}:${callId}`);
         const socketsBeforeJoin = await io.in(callRoom).fetchSockets();
         await socket.join(callRoom);
@@ -238,10 +259,12 @@ export const initChatSocket = (httpServer, allowedOrigins) => {
         const chatId = String(payload.chatId || "");
         const callId = String(payload.callId || "");
         const signal = payload.signal;
+        const signalBytes = signal ? Buffer.byteLength(JSON.stringify(signal)) : 0;
         const allowed =
           chatId &&
           callId &&
           signal &&
+          signalBytes <= maxSignalBytes &&
           (await canAccessConversation({
             tenantId: appName,
             userId,
@@ -252,8 +275,29 @@ export const initChatSocket = (httpServer, allowedOrigins) => {
           return;
         }
 
+        const conversation = await resolveConversation({
+          tenantId: appName,
+          conversationId: chatId,
+        });
+        const callRoom = room(appName, `call:${chatId}:${callId}`);
+        const call = conversation
+          ? await ChatCall.findOne({
+              where: {
+                appName,
+                conversationId: conversation.id,
+                callId,
+                status: activeCallStatuses,
+              },
+              attributes: ["callId"],
+            })
+          : null;
+        if (!call || !socket.rooms.has(callRoom)) {
+          acknowledge?.({ ok: false, code: "CHAT_CALL_NOT_ACTIVE" });
+          return;
+        }
+
         socket
-          .to(room(appName, `call:${chatId}:${callId}`))
+          .to(callRoom)
           .emit("call:signal", {
             chatId,
             callId,
@@ -261,7 +305,7 @@ export const initChatSocket = (httpServer, allowedOrigins) => {
             fromUserId: String(userId),
             fromName: socket.data.displayName,
           });
-        acknowledge?.({ ok: true });
+        acknowledge?.({ ok: true, delivered: true });
       } catch {
         acknowledge?.({ ok: false, code: "CHAT_CALL_SIGNAL_FAILED" });
       }

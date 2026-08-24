@@ -5,9 +5,15 @@ import serverConfig from "../config/server.config.js";
 import ChatUser from "../modules/chatUser.module.js";
 import ChatRole from "../modules/chatRole.module.js";
 import { normalizeAppName } from "./applicationDirectory.services.js";
+import { chatConfig } from "../config/chat.config.js";
 
-const hashPassword = (password, salt = crypto.randomBytes(16).toString("hex")) => {
-  const hash = crypto.pbkdf2Sync(String(password), salt, 120000, 64, "sha512").toString("hex");
+const hashPassword = (
+  password,
+  salt = crypto.randomBytes(16).toString("hex"),
+) => {
+  const hash = crypto
+    .pbkdf2Sync(String(password), salt, 120000, 64, "sha512")
+    .toString("hex");
   return `${salt}:${hash}`;
 };
 
@@ -18,12 +24,18 @@ const verifyPassword = (password, passwordHash) => {
   const candidate = hashPassword(password, salt).split(":")[1];
   const candidateBuffer = Buffer.from(candidate, "hex");
   const storedBuffer = Buffer.from(storedHash, "hex");
-  return candidateBuffer.length === storedBuffer.length &&
-    crypto.timingSafeEqual(candidateBuffer, storedBuffer);
+  return (
+    candidateBuffer.length === storedBuffer.length &&
+    crypto.timingSafeEqual(candidateBuffer, storedBuffer)
+  );
 };
 
 const assertPassword = (password) => {
-  if (typeof password !== "string" || password.length < 8 || password.length > 256) {
+  if (
+    typeof password !== "string" ||
+    password.length < 8 ||
+    password.length > 256
+  ) {
     const error = new Error("password must be between 8 and 256 characters");
     error.status = 400;
     error.code = "CHAT_INVALID_PASSWORD";
@@ -78,7 +90,7 @@ const toPublicUser = (user) => {
 
 const issueToken = (user, { appName } = {}) => {
   const publicUser = toPublicUser(user);
-  const appClaim = appName || process.env.CHAT_LOCAL_APP_NAME;
+  const appClaim = appName || chatConfig.localAuth.appName;
   const sourceApp = appClaim ? normalizeAppName(appClaim) : null;
   const appClaims = sourceApp ? { app: sourceApp, apps: [sourceApp] } : {};
 
@@ -92,23 +104,29 @@ const issueToken = (user, { appName } = {}) => {
       displayName: publicUser.display_name,
       role: publicUser.role,
       roles: publicUser.roles,
-      tenant_id: process.env.CHAT_LOCAL_TENANT_ID || "local",
+      tenant_id: chatConfig.localAuth.tenantId,
       ...appClaims,
       jti: crypto.randomUUID(),
     },
     serverConfig.secretKey,
     {
-      expiresIn: process.env.CHAT_JWT_EXPIRES_IN || "15m",
-      issuer: process.env.CHAT_JWT_ISSUER || "chat-local",
-      audience: process.env.CHAT_JWT_AUDIENCE || "chat-api",
+      expiresIn: chatConfig.localAuth.jwtExpiresIn,
+      issuer: chatConfig.localAuth.jwtIssuer,
+      audience: chatConfig.localAuth.jwtAudience,
       subject: publicUser.id,
     },
   );
 };
 
-const includeRoles = [{ model: ChatRole, as: "roles", through: { attributes: [] } }];
+const includeRoles = [
+  { model: ChatRole, as: "roles", through: { attributes: [] } },
+];
 
-export const listChatDirectoryUsers = async ({ search, limit = 50, excludeUserId } = {}) => {
+export const listChatDirectoryUsers = async ({
+  search,
+  limit = 50,
+  excludeUserId,
+} = {}) => {
   const where = { status: "active" };
 
   if (search) {
@@ -127,7 +145,10 @@ export const listChatDirectoryUsers = async ({ search, limit = 50, excludeUserId
     where,
     include: includeRoles,
     limit,
-    order: [["displayName", "ASC"], ["username", "ASC"]],
+    order: [
+      ["displayName", "ASC"],
+      ["username", "ASC"],
+    ],
   });
 
   return users.map(toPublicUser);
@@ -189,14 +210,18 @@ export const registerChatUser = async ({
   roleName = "member",
 }) => {
   if (!email || !username || !displayName || !password) {
-    const error = new Error("email, username, displayName, and password are required");
+    const error = new Error(
+      "email, username, displayName, and password are required",
+    );
     error.status = 400;
     error.code = "CHAT_INVALID_INPUT";
     throw error;
   }
   assertPassword(password);
 
-  const role = await ChatRole.findOne({ where: { name: normalizeRoleName(roleName) } });
+  const role = await ChatRole.findOne({
+    where: { name: normalizeRoleName(roleName) },
+  });
 
   if (!role) {
     const error = new Error("Role not found");
@@ -241,7 +266,11 @@ export const loginChatUser = async ({ login, password, appName }) => {
     include: includeRoles,
   });
 
-  if (!user || !verifyPassword(password, user.passwordHash) || user.status !== "active") {
+  if (
+    !user ||
+    !verifyPassword(password, user.passwordHash) ||
+    user.status !== "active"
+  ) {
     const error = new Error("Invalid chat login");
     error.status = 401;
     error.code = "CHAT_LOGIN_FAILED";
@@ -257,7 +286,8 @@ export const loginChatUser = async ({ login, password, appName }) => {
   };
 };
 
-export const listChatRoles = async () => ChatRole.findAll({ order: [["name", "ASC"]] });
+export const listChatRoles = async () =>
+  ChatRole.findAll({ order: [["name", "ASC"]] });
 
 export const createChatRole = async ({ name, description, permissions }) => {
   if (!name) {
@@ -280,10 +310,15 @@ export const createChatRole = async ({ name, description, permissions }) => {
 };
 
 const buildExternalUsername = (userId, email) => {
-  const emailName = String(email || "").split("@")[0].trim().toLowerCase();
+  const emailName = String(email || "")
+    .split("@")[0]
+    .trim()
+    .toLowerCase();
   const base = emailName || `user-${String(userId || crypto.randomUUID())}`;
 
-  return base.replace(/[^a-z0-9._-]+/g, "-").replace(/(^-|-$)/g, "") || "chat-user";
+  return (
+    base.replace(/[^a-z0-9._-]+/g, "-").replace(/(^-|-$)/g, "") || "chat-user"
+  );
 };
 
 export const updateChatUserAvatar = async ({
@@ -294,8 +329,12 @@ export const updateChatUserAvatar = async ({
   username,
 }) => {
   const numericUserId = Number(userId) || 0;
-  const normalizedEmail = String(email || "").trim().toLowerCase();
-  const normalizedUsername = String(username || buildExternalUsername(userId, normalizedEmail))
+  const normalizedEmail = String(email || "")
+    .trim()
+    .toLowerCase();
+  const normalizedUsername = String(
+    username || buildExternalUsername(userId, normalizedEmail),
+  )
     .trim()
     .toLowerCase();
   let user = numericUserId ? await ChatUser.findByPk(numericUserId) : null;

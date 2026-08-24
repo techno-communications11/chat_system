@@ -267,8 +267,9 @@ export default function ChatLauncher() {
         PaperProps={{
           sx: {
             mt: 1,
-            width: 380,
+            width: { xs: "calc(100vw - 24px)", sm: 520 },
             maxWidth: "calc(100vw - 24px)",
+            maxHeight: "min(760px, calc(100vh - 32px))",
             borderRadius: 2,
             overflow: "hidden",
           },

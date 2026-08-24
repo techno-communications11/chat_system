@@ -1,13 +1,11 @@
 import crypto from "crypto";
 import serverConfig from "../config/server.config.js";
+import { chatConfig } from "../config/chat.config.js";
 
 const algorithm = "aes-256-gcm";
 
 const getKey = () => {
-  const source =
-    process.env.CHAT_TOKEN_ENCRYPTION_KEY ||
-    process.env.SERVER_SECRETS ||
-    serverConfig.secretKey;
+  const source = chatConfig.encryptionKey || serverConfig.secretKey;
 
   if (!source) {
     throw new Error("CHAT_TOKEN_ENCRYPTION_KEY or SERVER_SECRETS is required");

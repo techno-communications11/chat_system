@@ -1,31 +1,71 @@
 import express from "express";
-import { registerUser, loginUser } from "../controllers/chat/auth.controllers.js";
+import { registerUser, loginUser } from "../controllers/auth.controllers.js";
 import {
-  getChatMe, getChatSettings, updateChatSettings, updateChatStatus, updateChatAvatarController,
-  listChatUsers, getChatUser, listRoles, createRole,
-} from "../controllers/chat/identity.controllers.js";
+  getChatMe,
+  getChatSettings,
+  updateChatSettings,
+  updateChatStatus,
+  updateChatAvatarController,
+  listChatUsers,
+  getChatUser,
+  listRoles,
+  createRole,
+} from "../controllers/identity.controllers.js";
 import {
-  listChatConversations, listGroups, listChannels, createChannel,
-  joinChannel, openDirectConversation, openGroupConversation,
-  updateConversation, addConversationMembers, removeConversationMember,
-  leaveConversation, transferOwnership, markConversationRead, clearConversationHistory,
-} from "../controllers/chat/conversation.controllers.js";
+  listChatConversations,
+  listGroups,
+  listChannels,
+  createChannel,
+  joinChannel,
+  openDirectConversation,
+  openGroupConversation,
+  updateConversation,
+  addConversationMembers,
+  removeConversationMember,
+  leaveConversation,
+  transferOwnership,
+  markConversationRead,
+  clearConversationHistory,
+} from "../controllers/conversation.controllers.js";
 import {
-  getConversationMessages, searchMessages, postConversationMessage,
-  patchConversationMessage, deleteConversationMessage, patchConversationMessagePin, postDirectMessage,
-  postMultiUserMessage, postBroadcastMessage, uploadConversationFile,
-  addMessageReaction, removeMessageReaction,
-} from "../controllers/chat/message.controllers.js";
-import { startConversationCall, getActiveConversationCalls, respondConversationCall, endConversationCall } from "../controllers/chat/call.controllers.js";
-import { listChatAuditLogs } from "../controllers/chat/audit.controllers.js";
+  getConversationMessages,
+  searchMessages,
+  postConversationMessage,
+  patchConversationMessage,
+  deleteConversationMessage,
+  patchConversationMessagePin,
+  postDirectMessage,
+  postMultiUserMessage,
+  postBroadcastMessage,
+  uploadConversationFile,
+  addMessageReaction,
+  removeMessageReaction,
+} from "../controllers/message.controllers.js";
+import {
+  startConversationCall,
+  getActiveConversationCalls,
+  respondConversationCall,
+  endConversationCall,
+} from "../controllers/call.controllers.js";
+import { listChatAuditLogs } from "../controllers/audit.controllers.js";
 import checkAuth from "../middlewares/check_auth.middleware.js";
 import { requireLegacyAuthEnabled } from "../middlewares/platformSecurity.middleware.js";
 import { authRateLimit } from "../middlewares/platformSecurity.middleware.js";
 
 const chatServiceRouter = express.Router();
 
-chatServiceRouter.post("/auth/register", authRateLimit, requireLegacyAuthEnabled, registerUser);
-chatServiceRouter.post("/auth/login", authRateLimit, requireLegacyAuthEnabled, loginUser);
+chatServiceRouter.post(
+  "/auth/register",
+  authRateLimit,
+  requireLegacyAuthEnabled,
+  registerUser,
+);
+chatServiceRouter.post(
+  "/auth/login",
+  authRateLimit,
+  requireLegacyAuthEnabled,
+  loginUser,
+);
 
 chatServiceRouter.get("/me", checkAuth, getChatMe);
 chatServiceRouter.get("/me/settings", checkAuth, getChatSettings);
@@ -47,26 +87,42 @@ chatServiceRouter.get("/admin/audit-logs", checkAuth, listChatAuditLogs);
 chatServiceRouter.post(
   "/conversations/direct/:userId",
   checkAuth,
-  openDirectConversation
+  openDirectConversation,
 );
-chatServiceRouter.post("/conversations/groups", checkAuth, openGroupConversation);
-chatServiceRouter.patch("/conversations/:chatId", checkAuth, updateConversation);
+chatServiceRouter.post(
+  "/conversations/groups",
+  checkAuth,
+  openGroupConversation,
+);
+chatServiceRouter.patch(
+  "/conversations/:chatId",
+  checkAuth,
+  updateConversation,
+);
 chatServiceRouter.post(
   "/conversations/:chatId/members",
   checkAuth,
-  addConversationMembers
+  addConversationMembers,
 );
 chatServiceRouter.delete(
   "/conversations/:chatId/members/:userId",
   checkAuth,
-  removeConversationMember
+  removeConversationMember,
 );
-chatServiceRouter.post("/conversations/:chatId/leave", checkAuth, leaveConversation);
-chatServiceRouter.post("/conversations/:chatId/transfer-ownership", checkAuth, transferOwnership);
+chatServiceRouter.post(
+  "/conversations/:chatId/leave",
+  checkAuth,
+  leaveConversation,
+);
+chatServiceRouter.post(
+  "/conversations/:chatId/transfer-ownership",
+  checkAuth,
+  transferOwnership,
+);
 chatServiceRouter.post(
   "/conversations/:chatId/read",
   checkAuth,
-  markConversationRead
+  markConversationRead,
 );
 chatServiceRouter.delete(
   "/conversations/:chatId/messages",
@@ -76,17 +132,17 @@ chatServiceRouter.delete(
 chatServiceRouter.get(
   "/conversations/:chatId/messages",
   checkAuth,
-  getConversationMessages
+  getConversationMessages,
 );
 chatServiceRouter.post(
   "/conversations/:chatId/messages",
   checkAuth,
-  postConversationMessage
+  postConversationMessage,
 );
 chatServiceRouter.patch(
   "/conversations/:chatId/messages/:messageId",
   checkAuth,
-  patchConversationMessage
+  patchConversationMessage,
 );
 chatServiceRouter.delete(
   "/conversations/:chatId/messages/:messageId",
@@ -96,45 +152,45 @@ chatServiceRouter.delete(
 chatServiceRouter.patch(
   "/conversations/:chatId/messages/:messageId/pin",
   checkAuth,
-  patchConversationMessagePin
+  patchConversationMessagePin,
 );
-chatServiceRouter.post("/messages/direct/:userId", checkAuth, postDirectMessage);
+chatServiceRouter.post(
+  "/messages/direct/:userId",
+  checkAuth,
+  postDirectMessage,
+);
 chatServiceRouter.post("/messages/multiple", checkAuth, postMultiUserMessage);
 chatServiceRouter.post("/messages/broadcast", checkAuth, postBroadcastMessage);
 chatServiceRouter.post(
   "/conversations/:chatId/files",
   checkAuth,
-  uploadConversationFile
+  uploadConversationFile,
 );
 chatServiceRouter.post(
   "/conversations/:chatId/calls",
   checkAuth,
-  startConversationCall
+  startConversationCall,
 );
-chatServiceRouter.get(
-  "/calls/active",
-  checkAuth,
-  getActiveConversationCalls,
-);
+chatServiceRouter.get("/calls/active", checkAuth, getActiveConversationCalls);
 chatServiceRouter.post(
   "/conversations/:chatId/calls/:callId/end",
   checkAuth,
-  endConversationCall
+  endConversationCall,
 );
 chatServiceRouter.post(
   "/conversations/:chatId/calls/:callId/respond",
   checkAuth,
-  respondConversationCall
+  respondConversationCall,
 );
 chatServiceRouter.post(
   "/conversations/:chatId/messages/:messageId/reactions",
   checkAuth,
-  addMessageReaction
+  addMessageReaction,
 );
 chatServiceRouter.delete(
   "/conversations/:chatId/messages/:messageId/reactions/:emoji",
   checkAuth,
-  removeMessageReaction
+  removeMessageReaction,
 );
 
 export default chatServiceRouter;

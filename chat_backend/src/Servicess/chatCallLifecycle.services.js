@@ -1,5 +1,8 @@
 import ChatCall from "../modules/chatCall.module.js";
-import { Op } from "sequelize";
+import ChatConversation from "../modules/chatConversation.module.js";
+import sequelize from "../config/db.js";
+import { Op, Transaction } from "sequelize";
+import { chatConfig } from "../config/chat.config.js";
 
 export class ChatCallError extends Error {
   constructor(
@@ -14,21 +17,7 @@ export class ChatCallError extends Error {
 }
 
 const activeStatuses = ["ringing", "connecting", "accepted"];
-const positiveNumber = (value, fallback) => {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
-};
-const staleAfterMs = {
-  ringing: positiveNumber(process.env.CHAT_CALL_RING_TIMEOUT_MS, 2 * 60 * 1000),
-  connecting: positiveNumber(
-    process.env.CHAT_CALL_CONNECT_TIMEOUT_MS,
-    2 * 60 * 1000,
-  ),
-  accepted: positiveNumber(
-    process.env.CHAT_CALL_MAX_DURATION_MS,
-    4 * 60 * 60 * 1000,
-  ),
-};
+const staleAfterMs = chatConfig.callTimeouts;
 
 export const toCallPayload = (record, additions = {}) => ({
   id: record.callId,
@@ -54,9 +43,11 @@ export const expireStaleCalls = async ({
   appName,
   conversationId,
   now = new Date(),
+  transaction,
 }) => {
   const records = await ChatCall.findAll({
     where: { appName, conversationId, status: activeStatuses },
+    ...(transaction ? { transaction, lock: Transaction.LOCK.UPDATE } : {}),
   });
 
   for (const record of records) {
@@ -73,7 +64,10 @@ export const expireStaleCalls = async ({
         endedAt: now,
         metadata: { ...(record.metadata || {}), endReason: "timeout" },
       },
-      { where: { id: record.id, status: previousStatus } },
+      {
+        where: { id: record.id, status: previousStatus },
+        ...(transaction ? { transaction } : {}),
+      },
     );
 
     if (!updated) continue;
@@ -87,30 +81,39 @@ export const createRingingCall = async ({
   type,
   actor,
 }) => {
-  await expireStaleCalls({ appName, conversationId });
-  const existing = await ChatCall.findOne({
-    where: { appName, conversationId, status: activeStatuses },
-  });
-  if (existing) {
-    throw new ChatCallError("A call is already active in this conversation", {
-      status: 409,
-      code: "CHAT_CALL_ALREADY_ACTIVE",
-      details: { call: toCallPayload(existing) },
+  return sequelize.transaction(async (transaction) => {
+    await ChatConversation.findByPk(conversationId, {
+      attributes: ["id"],
+      transaction,
+      lock: Transaction.LOCK.UPDATE,
     });
-  }
+    await expireStaleCalls({ appName, conversationId, transaction });
+    const existing = await ChatCall.findOne({
+      where: { appName, conversationId, status: activeStatuses },
+      transaction,
+      lock: Transaction.LOCK.UPDATE,
+    });
+    if (existing) {
+      throw new ChatCallError("A call is already active in this conversation", {
+        status: 409,
+        code: "CHAT_CALL_ALREADY_ACTIVE",
+        details: { call: toCallPayload(existing) },
+      });
+    }
 
-  const record = await ChatCall.create({
-    appName,
-    conversationId,
-    callId,
-    provider: "internal_webrtc",
-    type,
-    status: "ringing",
-    startedByUserId: String(actor.id),
-    startedAt: new Date(),
-    metadata: { startedBy: actor },
+    const record = await ChatCall.create({
+      appName,
+      conversationId,
+      callId,
+      provider: "internal_webrtc",
+      type,
+      status: "ringing",
+      startedByUserId: String(actor.id),
+      startedAt: new Date(),
+      metadata: { startedBy: actor },
+    }, { transaction });
+    return toCallPayload(record);
   });
-  return toCallPayload(record);
 };
 
 const getRingingCall = async ({ appName, conversationId, callId }) => {
@@ -173,7 +176,14 @@ export const respondToRingingCall = async ({
   }
 
   const [claimed] = await ChatCall.update(
-    { status: "connecting" },
+    {
+      status: "accepted",
+      metadata: {
+        ...(record.metadata || {}),
+        acceptedBy: actor,
+        acceptedAt: new Date().toISOString(),
+      },
+    },
     { where: { id: record.id, status: "ringing" } },
   );
   if (!claimed)
@@ -181,14 +191,7 @@ export const respondToRingingCall = async ({
       status: 409,
       code: "CHAT_CALL_ALREADY_ANSWERED",
     });
-  await record.update({
-    status: "accepted",
-    metadata: {
-      ...(record.metadata || {}),
-      acceptedBy: actor,
-      acceptedAt: new Date().toISOString(),
-    },
-  });
+  await record.reload();
   return toCallPayload(record);
 };
 
@@ -245,10 +248,28 @@ export const finishCall = async ({
         code: "CHAT_CALL_CANCEL_FORBIDDEN",
       });
     }
-    await record.update({ status: "cancelled", endedAt: new Date() });
+    const [updated] = await ChatCall.update(
+      { status: "cancelled", endedAt: new Date() },
+      { where: { id: record.id, status: "ringing" } },
+    );
+    if (!updated)
+      throw new ChatCallError("This call was already answered", {
+        status: 409,
+        code: "CHAT_CALL_ALREADY_ANSWERED",
+      });
+    await record.reload();
     return toCallPayload(record);
   }
 
-  await record.update({ status: "ended", endedAt: new Date() });
+  const [updated] = await ChatCall.update(
+    { status: "ended", endedAt: new Date() },
+    { where: { id: record.id, status: record.status } },
+  );
+  if (!updated)
+    throw new ChatCallError("This call was already ended", {
+      status: 409,
+      code: "CHAT_CALL_ALREADY_ENDED",
+    });
+  await record.reload();
   return toCallPayload(record);
 };

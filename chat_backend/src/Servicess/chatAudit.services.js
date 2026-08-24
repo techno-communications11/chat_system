@@ -1,9 +1,10 @@
 import ChatAuditLog from "../modules/chatAuditLog.module.js";
+import { chatConfig } from "../config/chat.config.js";
 
 export const writeChatAuditLog = async ({
-  appName = "chat_system",
+  appName = chatConfig.defaultAppName,
   appUserId,
-  provider = "local_chat",
+  provider = chatConfig.provider,
   action,
   targetUserId,
   targetChatId,
@@ -22,8 +23,18 @@ export const writeChatAuditLog = async ({
       metadata,
     });
   } catch (error) {
-    console.error("Chat audit logging failed:", error.message);
+    console.error(
+      JSON.stringify({
+        event: "chat_audit_log_failed",
+        appName,
+        appUserId,
+        provider,
+        action,
+        targetUserId,
+        targetChatId,
+        error: error.message,
+      }),
+    );
     return null;
   }
 };
-

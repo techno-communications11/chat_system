@@ -1,32 +1,11 @@
+import { getApplicationDirectoryUrl } from "../config/chat.config.js";
+
 const normalizeAppName = (value) =>
   String(value || "chat_system")
     .trim()
     .toLowerCase()
     .replace(/[^a-z0-9_-]+/g, "_")
     .replace(/^_+|_+$/g, "") || "chat_system";
-
-const getProviderConfig = (appName) => {
-  const normalizedAppName = normalizeAppName(appName);
-  const envKey = `CHAT_PROVIDER_${normalizedAppName.toUpperCase()}_USERS_URL`;
-  const usersUrl = process.env[envKey] || "";
-
-  if (usersUrl) {
-    return { usersUrl };
-  }
-
-  try {
-    const configuredProviders = JSON.parse(process.env.CHAT_PROVIDER_USERS_URLS || "{}");
-    return {
-      usersUrl:
-        configuredProviders[appName] ||
-        configuredProviders[normalizedAppName] ||
-        configuredProviders.default ||
-        "",
-    };
-  } catch {
-    return { usersUrl: "" };
-  }
-};
 
 const pickUserId = (user) =>
   user?.id ||
@@ -40,7 +19,8 @@ const pickUserId = (user) =>
 
 export const normalizeDirectoryUser = (user, appName) => {
   const id = String(pickUserId(user) || "").trim();
-  const email = user?.email || user?.email_id || user?.mail || user?.userEmail || "";
+  const email =
+    user?.email || user?.email_id || user?.mail || user?.userEmail || "";
   const name =
     user?.name ||
     user?.displayName ||
@@ -95,7 +75,7 @@ const getArrayPayload = (payload) => {
 
 export const fetchApplicationUsers = async ({ actor, query = {} }) => {
   const sourceApp = actor.sourceApp || actor.appName;
-  const { usersUrl } = getProviderConfig(sourceApp);
+  const usersUrl = getApplicationDirectoryUrl(sourceApp);
 
   if (!usersUrl) return null;
 
@@ -122,7 +102,9 @@ export const fetchApplicationUsers = async ({ actor, query = {} }) => {
       Accept: "application/json",
       "x-chat-app-name": sourceApp,
       "x-chat-tenant-id": actor.tenantId || actor.appName,
-      ...(actor.authToken ? { Authorization: `Bearer ${actor.authToken}` } : {}),
+      ...(actor.authToken
+        ? { Authorization: `Bearer ${actor.authToken}` }
+        : {}),
     },
   });
 
@@ -136,17 +118,25 @@ export const fetchApplicationUsers = async ({ actor, query = {} }) => {
   }
 
   const payload = await response.json();
-  const search = String(query.search || "").trim().toLowerCase();
+  const search = String(query.search || "")
+    .trim()
+    .toLowerCase();
 
   return getArrayPayload(payload)
     .map((user) => normalizeDirectoryUser(user, sourceApp))
     .filter(Boolean)
-    .filter((user) => !query.excludeSelf || String(user.id) !== String(actor.appUserId))
+    .filter(
+      (user) =>
+        !query.excludeSelf || String(user.id) !== String(actor.appUserId),
+    )
     .filter((user) => {
       if (!search) return true;
 
-      return [user.id, user.email, user.name, user.username]
-        .some((value) => String(value || "").toLowerCase().includes(search));
+      return [user.id, user.email, user.name, user.username].some((value) =>
+        String(value || "")
+          .toLowerCase()
+          .includes(search),
+      );
     })
     .slice(0, Number(query.limit) || 100);
 };
