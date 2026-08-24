@@ -64,7 +64,17 @@ export default function NotesDialog({ notes, onClose, onDelete, onSave, open, pa
     setTitle(note.title || "");
     setBody(note.body || "");
     setReminderAt(toDateTimeLocal(note.reminderAt));
-    if (page) setEditorOpen(true);
+    if (page) {
+      document.activeElement?.blur();
+      setEditorOpen(true);
+    }
+  };
+
+  const openEditor = () => {
+    // The editor is a nested dialog. Move focus out of the parent dialog
+    // before MUI hides it from assistive technology.
+    document.activeElement?.blur();
+    setEditorOpen(true);
   };
 
   const saveNote = () => {
@@ -115,7 +125,7 @@ export default function NotesDialog({ notes, onClose, onDelete, onSave, open, pa
             startIcon={<AddIcon />}
             onClick={() => {
               resetEditor();
-              setEditorOpen(true);
+              openEditor();
             }}
             sx={{ ml: "auto", borderRadius: 2, fontWeight: 700 }}
           >
@@ -144,7 +154,15 @@ export default function NotesDialog({ notes, onClose, onDelete, onSave, open, pa
             </Button>
           </Stack>
         </Stack>
-        <Dialog open={page && editorOpen} onClose={() => setEditorOpen(false)} fullWidth maxWidth="sm">
+        <Dialog
+          open={page && editorOpen}
+          onClose={() => {
+            document.activeElement?.blur();
+            setEditorOpen(false);
+          }}
+          fullWidth
+          maxWidth="sm"
+        >
           <DialogTitle>{editingId ? "Edit note" : "Add note"}</DialogTitle>
           <DialogContent>
             <Stack spacing={1.5} sx={{ pt: 1 }}>

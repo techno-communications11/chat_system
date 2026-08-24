@@ -12,6 +12,11 @@ export default defineConfig(({ mode }) => {
       host: "127.0.0.1",
       port: 5174,
       strictPort: true,
+      // Google Identity Services monitors its OAuth popup through window.closed.
+      // Keep the opener relationship available while the popup is active.
+      headers: {
+        "Cross-Origin-Opener-Policy": "same-origin-allow-popups",
+      },
       ...(useHttps
         ? {
             https: {

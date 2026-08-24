@@ -75,6 +75,7 @@ export default function ChatSidebar({
   settingsPage = false,
   onSettingsClose,
   onSettingsOpen,
+  onClearSelectedChat,
 }) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(
@@ -353,10 +354,22 @@ export default function ChatSidebar({
         avatarUploading={avatarUploading}
         currentUser={currentUser}
         currentUserName={currentUserName}
-        onOpenCalls={() => runRailAction(() => openLibrary({ tab: "calls" }))}
-        onOpenMedia={() => runRailAction(() => openLibrary({ tab: "media" }))}
-        onOpenNotes={() => runRailAction(() => setNotesOpen(true))}
-        onCreateGroup={() => runRailAction(() => onCreateGroup?.())}
+        onOpenCalls={() => runRailAction(() => {
+          onClearSelectedChat?.();
+          openLibrary({ tab: "calls" });
+        })}
+        onOpenMedia={() => runRailAction(() => {
+          onClearSelectedChat?.();
+          openLibrary({ tab: "media" });
+        })}
+        onOpenNotes={() => runRailAction(() => {
+          onClearSelectedChat?.();
+          setNotesOpen(true);
+        })}
+        onCreateGroup={() => runRailAction(() => {
+          onClearSelectedChat?.();
+          onCreateGroup?.();
+        })}
         onSettingsOpen={onSettingsOpen || (() => setSettingsOpen(true))}
         onTabSelect={setTab}
         totalUnreadCount={totalUnreadCount}

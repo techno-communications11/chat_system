@@ -880,18 +880,51 @@ export default function ChatSystem({ standalone = false }) {
   const handleRealtimePresence = useCallback(({ userId, presence, user }) => {
     if (!userId) return;
 
+    const nextPresence = presence || user?.presence || user?.status;
+
     setBuddies((prev) =>
       prev.map((buddy) =>
         String(getBuddySendId(buddy)) === String(userId)
           ? {
               ...buddy,
               ...user,
-              presence: presence || user?.presence,
-              status: presence || user?.status,
+              presence: nextPresence,
+              status: nextPresence,
             }
           : buddy,
       ),
     );
+
+    setSelectedChat((prev) => {
+      if (!prev || prev.type === "channel") return prev;
+
+      const selectedUserId = String(
+        getBuddySendId(prev.raw) || prev.id || "",
+      );
+      const selectedEmail = String(
+        getBuddyEmail(prev.raw) || prev.subtitle || "",
+      ).toLowerCase();
+      const eventEmail = String(
+        user?.email || user?.email_id || user?.mailid || "",
+      ).toLowerCase();
+
+      if (
+        selectedUserId !== String(userId) &&
+        (!eventEmail || selectedEmail !== eventEmail)
+      ) {
+        return prev;
+      }
+
+      return {
+        ...prev,
+        raw: {
+          ...(prev.raw || {}),
+          ...(user || {}),
+          presence: nextPresence,
+          status: nextPresence,
+        },
+      };
+    });
   }, []);
 
   const handleRealtimeAvatar = useCallback(({ userId, avatarUrl, user }) => {
@@ -2419,8 +2452,12 @@ export default function ChatSystem({ standalone = false }) {
         onAvatarUpload={handleAvatarUpload}
         onCreateGroup={() => navigate(`${CHAT_APP_BASE_PATH}/groups/new`)}
         settingsPage={settingsPage}
-        onSettingsOpen={() => navigate(`${CHAT_APP_BASE_PATH}/settings`)}
+        onSettingsOpen={() => {
+          setSelectedChat(null);
+          navigate(`${CHAT_APP_BASE_PATH}/settings`);
+        }}
         onSettingsClose={() => navigate(CHAT_APP_BASE_PATH)}
+        onClearSelectedChat={() => setSelectedChat(null)}
         onRefresh={fetchChatData}
         onSelectBuddy={selectBuddy}
         onSelectChannel={selectChannel}

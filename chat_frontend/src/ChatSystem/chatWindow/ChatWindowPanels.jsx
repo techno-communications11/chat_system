@@ -29,7 +29,7 @@ import {
 const BRAND_SOFT = "var(--chat-soft)";
 const BRAND_TEXT = "var(--chat-brand-text)";
 
-export function ToolBtn({ title, icon, disabled, onClick }) {
+export function ToolBtn({ title, icon, disabled, onClick, onPointerDown }) {
   return (
     <Tooltip title={title}>
       <span>
@@ -37,6 +37,7 @@ export function ToolBtn({ title, icon, disabled, onClick }) {
           size="small"
           disabled={disabled}
           onClick={onClick}
+          onPointerDown={onPointerDown}
           sx={{
             width: 28,
             height: 28,

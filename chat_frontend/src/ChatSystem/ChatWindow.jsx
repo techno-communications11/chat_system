@@ -1002,6 +1002,7 @@ export default function ChatWindow({
   const [mediaDialogOpen, setMediaDialogOpen] = useState(false);
   const [scheduleCallDialogOpen, setScheduleCallDialogOpen] = useState(false);
   const [selectedMessageIds, setSelectedMessageIds] = useState([]);
+  const composerInputRef = useRef(null);
   const availability = selectedChat ? getAvailability(selectedChat.raw) : null;
   const groupMembers =
     selectedChat?.type === "channel" ? getGroupMembers(selectedChat) : [];
@@ -1014,6 +1015,23 @@ export default function ChatWindow({
     return [getBuddyName(user), getBuddyEmail(user)]
       .some((value) => String(value || "").toLowerCase().includes(query));
   });
+
+  const applyTextFormat = (marker) => {
+    const input = composerInputRef.current;
+    const value = String(inputValue || "");
+    const start = input?.selectionStart ?? value.length;
+    const end = input?.selectionEnd ?? start;
+    const selectedText = value.slice(start, end);
+    const nextValue = `${value.slice(0, start)}${marker}${selectedText}${marker}${value.slice(end)}`;
+    setInputValue(nextValue);
+
+    requestAnimationFrame(() => {
+      input?.focus();
+      const cursorStart = start + marker.length;
+      const cursorEnd = cursorStart + selectedText.length;
+      input?.setSelectionRange(cursorStart, cursorEnd);
+    });
+  };
   const canSend = Boolean(inputValue.trim()) || pendingFiles.length > 0;
   const pinnedMessages = currentMessages.filter(
     (message) => message.metadata?.pinned,
@@ -1663,6 +1681,7 @@ export default function ChatWindow({
                 }}
               >
                 <TextField
+                  inputRef={composerInputRef}
                   fullWidth
                   variant="standard"
                   placeholder={`Message ${selectedChat.title}…`}
@@ -1798,10 +1817,14 @@ export default function ChatWindow({
                     <ToolBtn
                       title="Bold"
                       icon={<FormatBoldIcon sx={{ fontSize: 16 }} />}
+                      onPointerDown={(event) => event.preventDefault()}
+                      onClick={() => applyTextFormat("**")}
                     />
                     <ToolBtn
                       title="Italic"
                       icon={<FormatItalicIcon sx={{ fontSize: 16 }} />}
+                      onPointerDown={(event) => event.preventDefault()}
+                      onClick={() => applyTextFormat("*")}
                     />
                     {/* Mention picker popover */}
                     <Popover

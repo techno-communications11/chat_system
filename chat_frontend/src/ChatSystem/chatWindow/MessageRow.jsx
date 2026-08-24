@@ -58,6 +58,21 @@ function LinkifiedMessageText({ text }) {
   });
 }
 
+function FormattedMessageText({ text }) {
+  const formatPattern = /(\*\*[^*\n]+\*\*|__[^_\n]+__|\*[^*\n]+\*|_[^_\n]+_)/g;
+  const parts = String(text || "").split(formatPattern);
+
+  return parts.map((part, index) => {
+    if ((part.startsWith("**") && part.endsWith("**")) || (part.startsWith("__") && part.endsWith("__"))) {
+      return <strong key={`bold-${index}`}><LinkifiedMessageText text={part.slice(2, -2)} /></strong>;
+    }
+    if ((part.startsWith("*") && part.endsWith("*")) || (part.startsWith("_") && part.endsWith("_"))) {
+      return <em key={`italic-${index}`}><LinkifiedMessageText text={part.slice(1, -1)} /></em>;
+    }
+    return <LinkifiedMessageText key={`text-${index}`} text={part} />;
+  });
+}
+
 export default function MessageRow({
   authorName,
   currentUser,
@@ -191,7 +206,7 @@ export default function MessageRow({
             lineHeight={1.2}
             sx={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}
           >
-            <LinkifiedMessageText text={message.text} />
+            <FormattedMessageText text={message.text} />
           </Typography>
           {message.edited && (
             <Typography fontSize={10} color="text.secondary" textAlign="right">

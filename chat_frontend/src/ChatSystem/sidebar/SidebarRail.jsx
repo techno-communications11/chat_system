@@ -50,7 +50,7 @@ export default function SidebarRail({
       {appRailItems.map((item) => (
         <Tooltip key={item.key} title={item.label} placement="right">
           <IconButton
-            onClick={() => onTabSelect(item.key)}
+            onPointerDown={() => onTabSelect(item.key)}
             sx={{
               width: 40,
               height: 40,
@@ -80,7 +80,7 @@ export default function SidebarRail({
       ))}
       <Tooltip title="Create group" placement="right">
         <IconButton
-          onClick={onCreateGroup}
+          onPointerDown={onCreateGroup}
           sx={{
             width: 40,
             height: 40,
@@ -95,7 +95,7 @@ export default function SidebarRail({
       </Tooltip>
       <Tooltip title="Calls" placement="right">
         <IconButton
-          onClick={onOpenCalls}
+          onPointerDown={onOpenCalls}
           sx={{
             width: 40,
             height: 40,
@@ -110,7 +110,7 @@ export default function SidebarRail({
       </Tooltip>
       <Tooltip title="Media" placement="right">
         <IconButton
-          onClick={onOpenMedia}
+          onPointerDown={onOpenMedia}
           sx={{
             width: 40,
             height: 40,
@@ -125,7 +125,7 @@ export default function SidebarRail({
       </Tooltip>
       <Tooltip title="Notes" placement="right">
         <IconButton
-          onClick={onOpenNotes}
+          onPointerDown={onOpenNotes}
           sx={{
             width: 40,
             height: 40,
@@ -141,7 +141,7 @@ export default function SidebarRail({
       <Box sx={{ flex: 1 }} />
       <Tooltip title="Settings" placement="right">
         <IconButton
-          onClick={onSettingsOpen}
+          onPointerDown={onSettingsOpen}
           sx={{
             width: 40,
             height: 40,

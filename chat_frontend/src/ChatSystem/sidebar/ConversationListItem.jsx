@@ -2,6 +2,7 @@ import {
   Avatar,
   Badge,
   Box,
+  ListItemButton,
   Tooltip,
   Typography,
 } from "@mui/material";
@@ -100,26 +101,33 @@ export default function ConversationListItem({
   const preview = getLastMessagePreview(item, isChannel);
   const unreadLabel = unreadCount > 99 ? "99+" : unreadCount;
 
+  const handleSelect = () => {
+    if (disabled) return;
+    if (isChannel) {
+      onSelectChannel(item);
+    } else {
+      onSelectBuddy(item);
+    }
+  };
+
   return (
-    <Box
-      onClick={() => {
-        if (disabled) return;
-        if (isChannel) {
-          onSelectChannel(item);
-        } else {
-          onSelectBuddy(item);
-        }
-      }}
+    <ListItemButton
+      component="div"
+      selected={selected}
+      disabled={disabled}
+      onPointerDown={handleSelect}
+      disableRipple
       sx={{
         mb: 0.25,
-        cursor: disabled ? "not-allowed" : "pointer",
         borderRadius: 2.5,
         bgcolor: selected ? "var(--chat-soft)" : "transparent",
-        opacity: disabled ? 0.58 : 1,
         transition: "background-color 120ms ease, border-color 120ms ease",
         borderLeft: "0 solid transparent",
+        p: 0,
+        "&.Mui-selected": { bgcolor: "var(--chat-soft)" },
+        "&.Mui-selected:hover": { bgcolor: "var(--chat-soft)" },
         "&:hover": {
-          bgcolor: disabled ? "transparent" : selected ? "var(--chat-soft)" : "rgba(233,231,255,.42)",
+          bgcolor: selected ? "var(--chat-soft)" : "rgba(233,231,255,.42)",
         },
       }}
     >
@@ -187,6 +195,6 @@ export default function ConversationListItem({
           </Box>
         </Box>
       </Box>
-    </Box>
+    </ListItemButton>
   );
 }
