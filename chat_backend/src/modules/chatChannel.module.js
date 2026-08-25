@@ -5,8 +5,8 @@ const ChatChannel = sequelize.define(
   "ChatChannel",
   {
     id: {
-      type: DataTypes.INTEGER,
-      autoIncrement: true,
+      type: DataTypes.UUID,
+      defaultValue: DataTypes.UUIDV4,
       primaryKey: true,
     },
     appName: {
@@ -36,7 +36,7 @@ const ChatChannel = sequelize.define(
       allowNull: false,
     },
     conversationId: {
-      type: DataTypes.INTEGER,
+      type: DataTypes.UUID,
       allowNull: false,
       unique: true,
     },

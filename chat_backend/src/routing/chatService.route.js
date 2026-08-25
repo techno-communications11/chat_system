@@ -1,5 +1,5 @@
 import express from "express";
-import { registerUser, loginUser } from "../controllers/auth.controllers.js";
+import { registerUser, loginUser, refreshUser } from "../controllers/auth.controllers.js";
 import {
   getChatMe,
   getChatSettings,
@@ -49,6 +49,15 @@ import {
   endConversationCall,
 } from "../controllers/call.controllers.js";
 import { listChatAuditLogs } from "../controllers/audit.controllers.js";
+import {
+  getAdminDashboard,
+  listAdminUsersController,
+  getAdminUserController,
+  createAdminUserController,
+  bulkCreateAdminUsersController,
+  updateAdminUserController,
+  changeAdminUserPasswordController,
+} from "../controllers/admin.controllers.js";
 import checkAuth from "../middlewares/check_auth.middleware.js";
 import { requireLegacyAuthEnabled } from "../middlewares/platformSecurity.middleware.js";
 import { authRateLimit } from "../middlewares/platformSecurity.middleware.js";
@@ -67,6 +76,7 @@ chatServiceRouter.post(
   requireLegacyAuthEnabled,
   loginUser,
 );
+chatServiceRouter.post("/auth/refresh", authRateLimit, refreshUser);
 
 chatServiceRouter.get("/me", checkAuth, getChatMe);
 chatServiceRouter.get("/me/settings", checkAuth, getChatSettings);
@@ -85,6 +95,13 @@ chatServiceRouter.post("/channels", checkAuth, createChannel);
 chatServiceRouter.post("/channels/:channelId/join", checkAuth, joinChannel);
 chatServiceRouter.get("/messages/search", checkAuth, searchMessages);
 chatServiceRouter.get("/admin/audit-logs", checkAuth, listChatAuditLogs);
+chatServiceRouter.get("/admin/dashboard", checkAuth, getAdminDashboard);
+chatServiceRouter.get("/admin/users", checkAuth, listAdminUsersController);
+chatServiceRouter.get("/admin/users/:userId", checkAuth, getAdminUserController);
+chatServiceRouter.post("/admin/users", checkAuth, createAdminUserController);
+chatServiceRouter.post("/admin/users/bulk", checkAuth, bulkCreateAdminUsersController);
+chatServiceRouter.patch("/admin/users/:userId", checkAuth, updateAdminUserController);
+chatServiceRouter.patch("/admin/users/:userId/password", checkAuth, changeAdminUserPasswordController);
 chatServiceRouter.post(
   "/conversations/direct/:userId",
   checkAuth,

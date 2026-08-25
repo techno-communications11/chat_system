@@ -10,7 +10,7 @@ const ChatUserPresence = sequelize.define(
       primaryKey: true,
     },
     userId: {
-      type: DataTypes.INTEGER,
+      type: DataTypes.UUID,
       allowNull: false,
     },
     sessionId: {

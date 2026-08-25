@@ -5,13 +5,14 @@ const ChatConversation = sequelize.define(
   "ChatConversation",
   {
     id: {
-      type: DataTypes.INTEGER,
-      autoIncrement: true,
+      type: DataTypes.UUID,
+      defaultValue: DataTypes.UUIDV4,
       primaryKey: true,
     },
     publicId: {
       type: DataTypes.UUID,
-      allowNull: true,
+      defaultValue: DataTypes.UUIDV4,
+      allowNull: false,
       unique: true,
     },
     appName: {

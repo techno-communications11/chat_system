@@ -5,8 +5,8 @@ const ChatUser = sequelize.define(
   "ChatUser",
   {
     id: {
-      type: DataTypes.INTEGER,
-      autoIncrement: true,
+      type: DataTypes.UUID,
+      defaultValue: DataTypes.UUIDV4,
       primaryKey: true,
     },
     email: {
@@ -28,7 +28,7 @@ const ChatUser = sequelize.define(
       allowNull: true,
     },
     managerUserId: {
-      type: DataTypes.INTEGER,
+      type: DataTypes.UUID,
       allowNull: true,
     },
     marketId: {

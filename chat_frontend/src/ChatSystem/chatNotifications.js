@@ -41,14 +41,17 @@ export const showChatNotification = ({
   tag,
   onClick,
   url,
+  preserveCall = false,
   requireInteraction = false,
 }) => {
   if (!("Notification" in window)) return null;
   if (Notification.permission !== "granted") return null;
   if (!areChatNotificationsEnabled()) return null;
 
-  const isMobileBrowser = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-  if (isMobileBrowser && "serviceWorker" in navigator) {
+  // Keep incoming-call alerts on the page's Notification object. A service
+  // worker notification click can navigate/reload the client, which would
+  // interrupt the WebRTC call before the user presses End.
+  if (!preserveCall && "serviceWorker" in navigator) {
     return navigator.serviceWorker.ready
       .then((registration) => registration.showNotification(title || "New message", {
         body: body || "",
@@ -56,11 +59,24 @@ export const showChatNotification = ({
         tag: tag || undefined,
         renotify: true,
         requireInteraction,
-        data: { url: url || "/" },
+        data: { url: url || "/", preserveCall },
         silent: false,
         vibrate: [120, 60, 120],
       }))
-      .catch(() => null);
+      .catch(() => {
+        try {
+          return new Notification(title || "New message", {
+            body: body || "",
+            icon: icon || undefined,
+            tag: tag || undefined,
+            renotify: true,
+            requireInteraction,
+            silent: false,
+          });
+        } catch {
+          return null;
+        }
+      });
   }
 
   const notification = new Notification(title || "New message", {
@@ -69,7 +85,7 @@ export const showChatNotification = ({
     tag: tag || undefined,
     renotify: true,
     requireInteraction,
-    data: { url: url || "/" },
+    data: { url: url || "/", preserveCall },
     silent: false,
     vibrate: [120, 60, 120],
   });

@@ -5,13 +5,14 @@ const ChatGroup = sequelize.define(
   "ChatGroup",
   {
     id: {
-      type: DataTypes.INTEGER,
-      autoIncrement: true,
+      type: DataTypes.UUID,
+      defaultValue: DataTypes.UUIDV4,
       primaryKey: true,
     },
     publicId: {
       type: DataTypes.UUID,
-      allowNull: true,
+      defaultValue: DataTypes.UUIDV4,
+      allowNull: false,
       unique: true,
     },
     appName: {
@@ -32,7 +33,7 @@ const ChatGroup = sequelize.define(
       allowNull: false,
     },
     conversationId: {
-      type: DataTypes.INTEGER,
+      type: DataTypes.UUID,
       allowNull: false,
       unique: true,
     },

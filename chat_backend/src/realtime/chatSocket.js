@@ -26,7 +26,7 @@ const resolveConversation = async ({ tenantId, conversationId }) => {
   return ChatConversation.findOne({
     where: {
       appName: tenantId,
-      [Op.or]: [{ publicId: requestedId }, { id: Number(requestedId) || 0 }],
+      [Op.or]: [{ publicId: requestedId }, { id: requestedId }],
     },
     attributes: ["id", "publicId"],
   });

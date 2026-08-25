@@ -5,8 +5,12 @@ self.addEventListener("notificationclick", (event) => {
       const client = clients.find((item) => "focus" in item);
       const url = event.notification.data?.url || "/";
       if (client) {
-        return client.focus().then(() => client.navigate?.(url));
+        return client.focus().then(() => {
+          if (!event.notification.data?.preserveCall) return client.navigate?.(url);
+          return undefined;
+        });
       }
+      if (event.notification.data?.preserveCall) return undefined;
       return self.clients.openWindow(url);
     }),
   );

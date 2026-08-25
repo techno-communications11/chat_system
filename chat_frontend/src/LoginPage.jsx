@@ -18,7 +18,7 @@ import VisibilityOffIcon from "@mui/icons-material/VisibilityOff";
 import { useNavigate } from "react-router-dom";
 import { loginChatService } from "./Services/chat.services";
 import { CHAT_APP_BASE_PATH } from "./ChatSystem/chatRoutes";
-import { getTokenUser, storeAuthToken } from "./utils/authToken";
+import { getTokenUser, storeAuthTokens } from "./utils/authToken";
 
 const getMergedParams = () => {
   const url = new URL(window.location.href);
@@ -115,12 +115,12 @@ function LoginPage() {
         login: form.login,
         password: form.password,
       });
-      const token = response.data?.data?.token;
+      const token = response.data?.data?.accessToken || response.data?.data?.token;
       const user = response.data?.data?.user;
 
       if (!token) throw new Error("Login did not return a token");
 
-      storeAuthToken(token);
+      storeAuthTokens({ ...response.data.data, accessToken: token });
       sessionStorage.setItem("user", JSON.stringify(user || getTokenUser()));
       removeSensitiveParams();
       navigate(CHAT_APP_BASE_PATH, { replace: true });

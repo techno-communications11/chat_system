@@ -14,6 +14,7 @@ import MicIcon from "@mui/icons-material/Mic";
 import MicOffIcon from "@mui/icons-material/MicOff";
 import VideocamIcon from "@mui/icons-material/Videocam";
 import VideocamOffIcon from "@mui/icons-material/VideocamOff";
+import MinimizeIcon from "@mui/icons-material/Minimize";
 
 const getIceServers = () => {
   const stunUrls = String(
@@ -93,6 +94,7 @@ export default function InternalCallPanel({
   activeCall,
   currentUser,
   modal = false,
+  onMinimize,
   onEnd,
   socketRef,
 }) {
@@ -384,7 +386,7 @@ export default function InternalCallPanel({
         <Box
           sx={{
             display: "grid",
-            gridTemplateColumns: { xs: "1fr", sm: "1fr 150px" },
+            gridTemplateColumns: { xs: "1fr", sm: "minmax(0, 1fr) 240px" },
             gap: 1,
             p: 1,
           }}
@@ -393,7 +395,7 @@ export default function InternalCallPanel({
             sx={{
               position: "relative",
               bgcolor: "#111827",
-              height: modal ? { xs: 260, sm: 420 } : { xs: 190, sm: 220 },
+              height: modal ? { xs: "min(58vh, 520px)", sm: "min(72vh, 680px)" } : { xs: 190, sm: 220 },
               borderRadius: 1,
               overflow: "hidden",
             }}
@@ -422,7 +424,7 @@ export default function InternalCallPanel({
           <Box
             sx={{
               bgcolor: "#111827",
-              height: modal ? { xs: 130, sm: 420 } : { xs: 110, sm: 220 },
+              height: modal ? { xs: 130, sm: "min(72vh, 680px)" } : { xs: 110, sm: 220 },
               borderRadius: 1,
               overflow: "hidden",
             }}
@@ -476,6 +478,13 @@ export default function InternalCallPanel({
         justifyContent="center"
         sx={{ pb: 1.5 }}
       >
+        {modal && onMinimize && (
+          <Tooltip title="Minimize call">
+            <IconButton color="inherit" onClick={onMinimize}>
+              <MinimizeIcon />
+            </IconButton>
+          </Tooltip>
+        )}
         <Tooltip title={micEnabled ? "Mute microphone" : "Unmute microphone"}>
           <IconButton color="inherit" onClick={() => toggleTrack("audio")}>
             {micEnabled ? <MicIcon /> : <MicOffIcon />}

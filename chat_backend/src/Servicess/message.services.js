@@ -47,7 +47,9 @@ export const getChatMessageInfo = async ({ actor, chatId, messageId }) => {
   });
   const sentAt = new Date(message.createdAt).getTime();
   const recipients = participants
-    .filter((item) => item.chatIdentityId !== message.senderIdentityId)
+    .filter(
+      (item) => String(item.chatIdentityId) !== String(message.senderIdentityId),
+    )
     .map((item) => {
       const readAt = item.lastReadAt ? new Date(item.lastReadAt).toISOString() : null;
       const read = Boolean(readAt && new Date(readAt).getTime() >= sentAt);
@@ -211,7 +213,7 @@ export const getChatMessages = async ({ actor, chatId, query = {} }) => {
   });
   const serializeMessage = (message) => {
     const recipients = participants.filter(
-      (participant) => Number(participant.chatIdentityId) !== Number(message.senderIdentityId),
+      (participant) => String(participant.chatIdentityId) !== String(message.senderIdentityId),
     );
     const seenByAll =
       recipients.length > 0 &&
@@ -251,11 +253,28 @@ export const sendChatMessage = async ({ actor, chatId, text, replyTo, metadata }
   });
   assertString(text, "text");
 
+  let replyToMessageId = null;
+  if (replyTo) {
+    const repliedMessage = await ChatMessage.findOne({
+      where: {
+        id: String(replyTo),
+        conversationId: conversation.id,
+      },
+    });
+    if (!repliedMessage) {
+      throw new ChatServiceError("The replied message was not found in this group", {
+        status: 400,
+        code: "CHAT_INVALID_REPLY_TARGET",
+      });
+    }
+    replyToMessageId = repliedMessage.id;
+  }
+
   const message = await ChatMessage.create({
     conversationId: conversation.id,
     senderIdentityId: identity.id,
     text: text.trim(),
-    replyToMessageId: replyTo || null,
+    replyToMessageId,
     metadata: metadata || null,
   });
 

@@ -151,10 +151,10 @@ function TicketingTokenBridge({ children }) {
   return children;
 }
 
-function ChatPage() {
+function ChatPage({ adminPage = false }) {
   return (
     <Box sx={{ height: "100vh", width: "100%", minWidth: 0, overflow: "hidden" }}>
-      <ChatSystem standalone />
+      <ChatSystem standalone adminPage={adminPage} />
     </Box>
   );
 }
@@ -165,6 +165,11 @@ function ProtectedChatPage() {
   return <ChatPage />;
 }
 
+function ProtectedAdminPage() {
+  if (!getStoredAuthToken()) return <Navigate to="/login" replace />;
+  return <ChatPage adminPage />;
+}
+
 function App() {
   return (
     <AppThemeProvider>
@@ -173,7 +178,9 @@ function App() {
           <Routes>
           <Route path="/" element={<Navigate to={CHAT_APP_BASE_PATH} replace />} />
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/admin" element={<ProtectedAdminPage />} />
           <Route path={CHAT_APP_BASE_PATH} element={<ProtectedChatPage />} />
+          <Route path={`${CHAT_APP_BASE_PATH}/admin`} element={<ProtectedAdminPage />} />
           <Route path={`${CHAT_APP_BASE_PATH}/settings`} element={<ProtectedChatPage />} />
           <Route path={`${CHAT_APP_BASE_PATH}/groups/new`} element={<ProtectedChatPage />} />
           <Route path={`${CHAT_APP_BASE_PATH}/:id`} element={<ProtectedChatPage />} />

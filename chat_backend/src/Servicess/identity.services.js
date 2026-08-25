@@ -93,7 +93,7 @@ export const updateChatPresence = async ({ actor, presence }) => {
   if (actor.appUserId) {
     const now = new Date();
     await ChatUserPresence.upsert({
-      userId: Number(actor.appUserId),
+      userId: String(actor.appUserId),
       sessionId: "primary",
       presence: normalizedPresence,
       lastSeenAt: now,
@@ -161,13 +161,21 @@ export const getChatUsers = async ({ actor, query = {} }) => {
       details: error.details,
     });
   });
-  const directoryUsers =
-    providerUsers ||
-    (await listChatDirectoryUsers({
-      search,
-      limit,
-      excludeUserId: query.excludeSelf ? identity.appUserId : null,
-    }));
+  const localUsers = await listChatDirectoryUsers({
+    search,
+    limit: Math.max(limit, 100),
+    excludeUserId: query.excludeSelf ? identity.appUserId : null,
+  });
+  // The local chat user table is authoritative for local accounts. Merge it
+  // with the host directory so users created by the admin panel are available
+  // in group creation even when the host directory returns only a subset.
+  const isLocalChat =
+    actor.sourceApp === "chat_system" ||
+    actor.appName === "chat_system" ||
+    actor.appName === "local";
+  const directoryUsers = isLocalChat
+    ? localUsers
+    : [...(providerUsers || []), ...localUsers];
   const identityWhere = {
     appName: actor.appName,
     provider,
@@ -196,7 +204,10 @@ export const getChatUsers = async ({ actor, query = {} }) => {
   });
   const usersByKey = new Map();
 
-  for (const user of directoryUsers) {
+  for (const user of directoryUsers.filter(
+    (user) =>
+      !query.excludeSelf || String(user.id) !== String(identity.appUserId),
+  )) {
     usersByKey.set(String(user.id), user);
   }
 
@@ -231,7 +242,7 @@ export const getChatUserProfile = async ({ actor, userId }) => {
     where: {
       appName: actor.appName,
       provider,
-      [Op.or]: [{ appUserId: String(userId) }, { id: Number(userId) || 0 }],
+      [Op.or]: [{ appUserId: String(userId) }, { id: String(userId) }],
     },
   });
 

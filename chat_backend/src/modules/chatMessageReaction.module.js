@@ -5,8 +5,8 @@ const ChatMessageReaction = sequelize.define(
   "ChatMessageReaction",
   {
     id: {
-      type: DataTypes.INTEGER,
-      autoIncrement: true,
+      type: DataTypes.UUID,
+      defaultValue: DataTypes.UUIDV4,
       primaryKey: true,
     },
     messageId: {
@@ -14,7 +14,7 @@ const ChatMessageReaction = sequelize.define(
       allowNull: false,
     },
     chatIdentityId: {
-      type: DataTypes.INTEGER,
+      type: DataTypes.UUID,
       allowNull: false,
     },
     emoji: {

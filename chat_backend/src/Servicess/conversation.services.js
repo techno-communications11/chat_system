@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import sequelize from "../config/db.js";
 import ChatIdentity from "../modules/chatIdentity.module.js";
 import ChatConversation from "../modules/chatConversation.module.js";
 import ChatConversationParticipant from "../modules/chatConversationParticipant.module.js";
@@ -479,6 +480,12 @@ export const createGroupConversation = async ({
   userIds = [],
 }) => {
   const actorIdentity = await ensureLocalIdentity(actor);
+  if (!Array.isArray(userIds)) {
+    throw new ChatServiceError("userIds must be an array", {
+      status: 400,
+      code: "CHAT_INVALID_INPUT",
+    });
+  }
   const uniqueUserIds = [
     ...new Set(userIds.map((userId) => String(userId).trim()).filter(Boolean)),
   ];
@@ -490,46 +497,56 @@ export const createGroupConversation = async ({
     });
   }
 
-  const conversation = await ChatConversation.create({
-    appName: actor.appName,
-    type: "group",
-    title: String(title || "Group chat").trim(),
-    publicId: crypto.randomUUID(),
-  });
-  const group = await ChatGroup.create({
-    appName: actor.appName,
-    publicId: crypto.randomUUID(),
-    name: conversation.title,
-    description: null,
-    ownerUserId: String(actorIdentity.appUserId),
-    conversationId: conversation.id,
-  });
-  await conversation.update({
-    metadata: { groupId: group.id },
-  });
-
-  await ChatConversationParticipant.create({
-    conversationId: conversation.id,
-    chatIdentityId: actorIdentity.id,
-    role: "owner",
-  });
-
+  const memberIdentities = [];
   for (const userId of uniqueUserIds) {
     if (String(userId) === String(actorIdentity.appUserId)) continue;
 
-    const identity = await findOrCreateUserIdentity({
+    memberIdentities.push(await findOrCreateUserIdentity({
       actor,
       appName: actor.appName,
       userId,
-    });
+    }));
+  }
 
-    await ChatConversationParticipant.findOrCreate({
-      where: {
-        conversationId: conversation.id,
-        chatIdentityId: identity.id,
-      },
-      defaults: { role: "member" },
-    });
+  const transaction = await sequelize.transaction();
+  let conversation;
+  try {
+    conversation = await ChatConversation.create({
+      appName: actor.appName,
+      type: "group",
+      title: String(title || "Group chat").trim() || "Group chat",
+      publicId: crypto.randomUUID(),
+    }, { transaction });
+    const group = await ChatGroup.create({
+      appName: actor.appName,
+      publicId: crypto.randomUUID(),
+      name: conversation.title,
+      description: null,
+      ownerUserId: String(actorIdentity.appUserId),
+      conversationId: conversation.id,
+    }, { transaction });
+    await conversation.update({ metadata: { groupId: group.id } }, { transaction });
+
+    await ChatConversationParticipant.create({
+      conversationId: conversation.id,
+      chatIdentityId: actorIdentity.id,
+      role: "owner",
+    }, { transaction });
+
+    for (const identity of memberIdentities) {
+      await ChatConversationParticipant.findOrCreate({
+        where: {
+          conversationId: conversation.id,
+          chatIdentityId: identity.id,
+        },
+        defaults: { role: "member" },
+        transaction,
+      });
+    }
+    await transaction.commit();
+  } catch (error) {
+    await transaction.rollback();
+    throw error;
   }
 
   await writeChatAuditLog({
@@ -545,11 +562,22 @@ export const createGroupConversation = async ({
 };
 
 export const listChatGroups = async ({ actor }) => {
-  await ensureLocalIdentity(actor);
+  const identity = await ensureLocalIdentity(actor);
 
   const groups = await ChatGroup.findAll({
     where: { appName: actor.appName },
-    include: [{ model: ChatConversation, as: "conversation" }],
+    include: [{
+      model: ChatConversation,
+      as: "conversation",
+      required: true,
+      include: [{
+        model: ChatConversationParticipant,
+        as: "participants",
+        where: { chatIdentityId: identity.id },
+        required: true,
+        attributes: [],
+      }],
+    }],
     order: [["updatedAt", "DESC"]],
   });
 

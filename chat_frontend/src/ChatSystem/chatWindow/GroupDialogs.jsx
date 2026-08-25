@@ -3,7 +3,6 @@ import {
   Avatar,
   Box,
   Button,
-  Checkbox,
   Dialog,
   DialogActions,
   DialogContent,
@@ -255,24 +254,48 @@ export function AddMembersDialog({
             {error}
           </Alert>
         )}
-        <List dense sx={{ maxHeight: 320, overflow: "auto" }}>
+        <List sx={{ maxHeight: 360, overflow: "auto", p: 0.25 }}>
           {members.map((buddy) => {
             const userId = String(getBuddySendId(buddy));
             const checked = selectedIds.includes(userId);
             return (
-              <ListItemButton key={userId} onClick={() => onSelect(userId)}>
-                <Checkbox
-                  edge="start"
-                  checked={checked}
-                  tabIndex={-1}
-                  disableRipple
-                />
+              <ListItemButton
+                key={userId}
+                onClick={() => onSelect(userId)}
+                sx={{
+                  borderRadius: 2,
+                  mb: 0.5,
+                  px: 1.25,
+                  py: 0.75,
+                  bgcolor: checked ? "action.selected" : "transparent",
+                  border: "1px solid",
+                  borderColor: checked ? "primary.main" : "transparent",
+                  transition: "background-color 160ms ease, border-color 160ms ease, transform 160ms ease",
+                  "&:hover": {
+                    bgcolor: checked ? "action.selected" : "action.hover",
+                    transform: "translateX(2px)",
+                  },
+                }}
+              >
+                <Avatar
+                  src={getImageUrl(buddy)}
+                  sx={{
+                    width: 42,
+                    height: 42,
+                    mr: 1.25,
+                    border: checked ? "2px solid" : "0 solid",
+                    borderColor: "primary.main",
+                  }}
+                >
+                  {getInitial(getBuddyName(buddy))}
+                </Avatar>
                 <ListItemText
                   primary={getBuddyName(buddy)}
                   secondary={getBuddyEmail(buddy)}
                   primaryTypographyProps={{ noWrap: true }}
                   secondaryTypographyProps={{ noWrap: true }}
                 />
+                {checked && <CheckCircleIcon color="primary" sx={{ fontSize: 21, mr: 0.5 }} />}
               </ListItemButton>
             );
           })}

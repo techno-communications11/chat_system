@@ -10,11 +10,11 @@ const ChatMessage = sequelize.define(
       primaryKey: true,
     },
     conversationId: {
-      type: DataTypes.INTEGER,
+      type: DataTypes.UUID,
       allowNull: false,
     },
     senderIdentityId: {
-      type: DataTypes.INTEGER,
+      type: DataTypes.UUID,
       allowNull: false,
     },
     text: {
@@ -30,7 +30,7 @@ const ChatMessage = sequelize.define(
       allowNull: true,
     },
     deletedAt: { type: DataTypes.DATE, allowNull: true },
-    deletedByIdentityId: { type: DataTypes.INTEGER, allowNull: true },
+    deletedByIdentityId: { type: DataTypes.UUID, allowNull: true },
   },
   {
     tableName: "chat_messages",

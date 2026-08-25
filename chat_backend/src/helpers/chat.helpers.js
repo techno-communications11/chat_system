@@ -1,7 +1,8 @@
-import { Op } from "sequelize";
+import { Op, literal } from "sequelize";
 import crypto from "crypto";
 import { chatConfig } from "../config/chat.config.js";
 import ChatIdentity from "../modules/chatIdentity.module.js";
+import ChatUser from "../modules/chatUser.module.js";
 import ChatConversation from "../modules/chatConversation.module.js";
 import ChatConversationParticipant from "../modules/chatConversationParticipant.module.js";
 import ChatMessage from "../modules/chatMessage.module.js";
@@ -362,9 +363,9 @@ const toUser = (identity, chatUser = null) => {
     chatUser?.avatarUrl || metadata.avatarUrl || null,
   );
   const name =
-    identity.providerDisplayName ||
     chatUser?.display_name ||
     chatUser?.name ||
+    identity.providerDisplayName ||
     identity.appUserEmail ||
     String(identity.appUserId);
   const profile = {
@@ -510,7 +511,13 @@ const toConversation = async (conversation, currentIdentityId) => {
     );
 
   if (unreadAfter) {
-    unreadWhere.createdAt = { [Op.gt]: unreadAfter };
+    // Compare timestamps inside MySQL. Passing the DATE string through the
+    // JavaScript Date constructor applies a timezone conversion and can make
+    // an already-read message look unread after a refresh.
+    const safeUnreadAfter = String(unreadAfter).replace(/'/g, "''");
+    unreadWhere.createdAt = {
+      [Op.gt]: literal(`'${safeUnreadAfter}'`),
+    };
   }
 
   const visibleLastMessage =
@@ -646,23 +653,45 @@ const findOrCreateUserIdentity = async ({
   const resolvedAppName = normalizeAppName(
     appName || actor?.appName || defaultAppName,
   );
-  const chatUser =
+  // Local accounts are authoritative for local authentication. Only fall
+  // back to the host application's directory when no local profile exists.
+  let chatUser =
+    (await getChatDirectoryUserById(userId)) ||
     (actor
       ? await findApplicationUser({ actor, userId }).catch(() => null)
-      : null) || (await getChatDirectoryUserById(userId));
+      : null);
+  const localUser = chatUser?.id
+    ? await ChatUser.findOne({ where: { id: String(chatUser.id) } })
+    : chatUser?.email
+      ? await ChatUser.findOne({
+          where: { email: String(chatUser.email).trim().toLowerCase() },
+        })
+      : null;
+  if (localUser) {
+    chatUser = {
+      ...chatUser,
+      id: String(localUser.id),
+      user_id: String(localUser.id),
+      email: localUser.email,
+      name: localUser.displayName,
+      display_name: localUser.displayName,
+      username: localUser.username,
+    };
+  }
+  const canonicalUserId = String(localUser?.id || userId);
 
   const [identity] = await ChatIdentity.findOrCreate({
     where: {
       appName: resolvedAppName,
-      appUserId: String(userId),
+      appUserId: canonicalUserId,
       provider,
     },
     defaults: {
       appName: resolvedAppName,
-      appUserId: String(userId),
+      appUserId: canonicalUserId,
       appUserEmail: chatUser?.email || email || null,
       provider,
-      providerUserId: String(userId),
+      providerUserId: canonicalUserId,
       providerEmail: chatUser?.email || email || null,
       providerDisplayName:
         chatUser?.display_name ||
@@ -691,9 +720,10 @@ const getConversationForMember = async ({ chatId, identityId, appName }) => {
   const requestedId = String(chatId || "");
   const conversationWhere = {
     ...(appName ? { appName: normalizeAppName(appName) } : {}),
-    ...(requestedId.includes("-")
-      ? { publicId: requestedId }
-      : { id: requestedId }),
+    [Op.or]: [
+      { publicId: requestedId },
+      { id: requestedId },
+    ],
   };
   const conversation = await ChatConversation.findOne({
     where: conversationWhere,
@@ -719,9 +749,10 @@ const getParticipantForMember = async ({ chatId, identityId, appName }) => {
   const requestedId = String(chatId || "");
   const conversationWhere = {
     ...(appName ? { appName: normalizeAppName(appName) } : {}),
-    ...(requestedId.includes("-")
-      ? { publicId: requestedId }
-      : { id: requestedId }),
+    [Op.or]: [
+      { publicId: requestedId },
+      { id: requestedId },
+    ],
   };
   const conversation = await ChatConversation.findOne({
     where: conversationWhere,

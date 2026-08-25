@@ -4,9 +4,9 @@ import sequelize from "../config/db.js";
 const ChatCall = sequelize.define(
   "ChatCall",
   {
-    id: { type: DataTypes.INTEGER, autoIncrement: true, primaryKey: true },
+    id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
     appName: { type: DataTypes.STRING, allowNull: false },
-    conversationId: { type: DataTypes.INTEGER, allowNull: false },
+    conversationId: { type: DataTypes.UUID, allowNull: false },
     callId: { type: DataTypes.STRING(64), allowNull: false },
     provider: {
       type: DataTypes.STRING,

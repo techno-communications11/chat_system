@@ -1,6 +1,6 @@
 import axios from "axios";
 import Cookies from "js-cookie";
-import { clearAuthToken, getStoredAuthToken } from "../utils/authToken";
+import { clearAuthToken, getStoredAuthToken, getStoredRefreshToken, storeAuthTokens } from "../utils/authToken";
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL,
@@ -8,6 +8,21 @@ const api = axios.create({
 });
 
 const API_LOGGING_ENABLED = import.meta.env.DEV || import.meta.env.VITE_API_LOGGING === "true";
+let refreshRequest = null;
+
+const refreshAccessToken = () => {
+  if (!refreshRequest) {
+    refreshRequest = axios.post(
+      `${import.meta.env.VITE_API_URL || ""}/chat-service/auth/refresh`,
+      { refreshToken: getStoredRefreshToken() },
+    ).then((response) => {
+      const data = response.data?.data || {};
+      storeAuthTokens(data);
+      return data.accessToken || data.token;
+    }).finally(() => { refreshRequest = null; });
+  }
+  return refreshRequest;
+};
 
 const logApi = (event, details) => {
   if (!API_LOGGING_ENABLED) return;
@@ -51,7 +66,7 @@ api.interceptors.response.use(
     });
     return response;
   },
-  (error) => {
+  async (error) => {
     const requestUrl = error?.config?.url || "";
     const isLoginRequest = requestUrl.includes("/auth/login");
 
@@ -63,7 +78,17 @@ api.interceptors.response.use(
       message: error.message,
     });
 
-    if (error.response?.status === 401 && !isLoginRequest) {
+    const isRefreshRequest = requestUrl.includes("/auth/refresh");
+    if (error.response?.status === 401 && !isLoginRequest && !isRefreshRequest && getStoredRefreshToken() && !error.config?._retry) {
+      error.config._retry = true;
+      try {
+        const accessToken = await refreshAccessToken();
+        error.config.headers.Authorization = `Bearer ${accessToken}`;
+        return api.request(error.config);
+      } catch {
+        clearAuthToken();
+      }
+    } else if (error.response?.status === 401 && !isLoginRequest) {
       clearAuthToken();
       Cookies.remove("ip", { path: "/" });
       Cookies.remove("id", { path: "/" });

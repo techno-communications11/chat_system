@@ -1,6 +1,7 @@
 import { Avatar, Badge, Box, CircularProgress, Divider, IconButton, Tooltip } from "@mui/material";
 import AttachFileIcon from "@mui/icons-material/AttachFile";
 import SettingsIcon from "@mui/icons-material/Settings";
+import AdminPanelSettingsOutlinedIcon from "@mui/icons-material/AdminPanelSettingsOutlined";
 import CallIcon from "@mui/icons-material/Call";
 import ChatBubbleIcon from "@mui/icons-material/ChatBubble";
 import GroupAddIcon from "@mui/icons-material/GroupAdd";
@@ -20,6 +21,9 @@ export default function SidebarRail({
   onTabSelect,
   totalUnreadCount,
 }) {
+  const isAdmin = (currentUser?.roles || []).some((role) =>
+    ["admin", "superadmin"].includes(String(role).toLowerCase()),
+  );
   return (
     <Box
       sx={{
@@ -139,6 +143,23 @@ export default function SidebarRail({
         </IconButton>
       </Tooltip>
       <Box sx={{ flex: 1 }} />
+      {isAdmin && (
+        <Tooltip title="Admin console" placement="right">
+          <IconButton
+            onPointerDown={() => window.location.assign("/chat-app/admin")}
+            sx={{
+              width: 40,
+              height: 40,
+              color: "#b9b2ff",
+              bgcolor: "rgba(255,255,255,.08)",
+              borderRadius: 2,
+              "&:hover": { bgcolor: "rgba(255,255,255,.15)" },
+            }}
+          >
+            <AdminPanelSettingsOutlinedIcon />
+          </IconButton>
+        </Tooltip>
+      )}
       <Tooltip title="Settings" placement="right">
         <IconButton
           onPointerDown={onSettingsOpen}

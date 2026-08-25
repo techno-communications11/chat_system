@@ -360,7 +360,7 @@ const ensureSchemaCompatibility = async () => {
     allowNull: true,
   });
   await addColumnIfMissing(queryInterface, "chat_messages", "deletedAt", { type: DataTypes.DATE, allowNull: true });
-  await addColumnIfMissing(queryInterface, "chat_messages", "deletedByIdentityId", { type: DataTypes.INTEGER, allowNull: true });
+  await addColumnIfMissing(queryInterface, "chat_messages", "deletedByIdentityId", { type: DataTypes.UUID, allowNull: true });
   await addColumnIfMissing(queryInterface, "chat_conversation_participants", "lastReadAt", {
     type: DataTypes.DATE,
     allowNull: true,
@@ -390,7 +390,7 @@ const ensureSchemaCompatibility = async () => {
     allowNull: true,
   });
   await addColumnIfMissing(queryInterface, "chat_users", "managerUserId", {
-    type: DataTypes.INTEGER,
+    type: DataTypes.UUID,
     allowNull: true,
   });
   await addColumnIfMissing(queryInterface, "chat_users", "marketId", {

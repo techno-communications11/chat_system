@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Avatar,
   Box,
@@ -97,6 +97,7 @@ export default function MessageRow({
   onReact,
   onReply,
   onSelect,
+  messageInfoVersion = 0,
   selected = false,
   selectionMode = false,
   showAvatar = true,
@@ -122,9 +123,8 @@ export default function MessageRow({
         dateStyle: "medium",
         timeStyle: "short",
       }).format(messageDate);
-  const openInfo = async () => {
-    setInfoOpen(true);
-    if (!chatId || !message.id || infoData || infoLoading) return;
+  const loadInfo = async ({ force = false } = {}) => {
+    if (!chatId || !message.id || (infoLoading && !force)) return;
     setInfoLoading(true);
     try {
       const response = await getChatMessageInfoService(chatId, message.id);
@@ -135,6 +135,18 @@ export default function MessageRow({
       setInfoLoading(false);
     }
   };
+  const openInfo = async () => {
+    setInfoOpen(true);
+    if (!infoData && !infoLoading) await loadInfo();
+  };
+
+  useEffect(() => {
+    if (!messageInfoVersion || !isMe) return;
+    // Invalidate cached data even when the dialog is closed, so the next open
+    // always shows the latest delivery/read state.
+    setInfoData(null);
+    if (infoOpen) loadInfo({ force: true });
+  }, [messageInfoVersion]);
   const recipients = infoData?.recipients || [];
   const readRecipients = recipients.filter((recipient) => recipient.status === "read");
   const deliveredRecipients = recipients.filter((recipient) => recipient.status !== "read");

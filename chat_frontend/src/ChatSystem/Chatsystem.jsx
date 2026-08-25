@@ -84,6 +84,7 @@ import { clearAuthToken, getTokenUser } from "../utils/authToken";
 import { useThemeMode } from "../themeMode";
 import { getInitial } from "./sidebar/sidebarUtils";
 import { AddMembersDialog, GroupCreationDialog } from "./chatWindow/GroupDialogs";
+import AdminPage from "../AdminPage";
 
 const getMessageTimestamp = (message) => {
   const value =
@@ -221,7 +222,7 @@ const getConversationIdFromResponse = (response) => {
   return candidates.find((value) => value !== undefined && value !== null && value !== "") || null;
 };
 
-export default function ChatSystem({ standalone = false }) {
+export default function ChatSystem({ standalone = false, adminPage = false }) {
   const { setMode } = useThemeMode();
   const navigate = useNavigate();
   const location = useLocation();
@@ -242,6 +243,7 @@ export default function ChatSystem({ standalone = false }) {
   const [loadError, setLoadError] = useState("");
   const [selectedChat, setSelectedChat] = useState(null);
   const [messagesByChat, setMessagesByChat] = useState({});
+  const [messageInfoVersions, setMessageInfoVersions] = useState({});
   const [typingUsersByChat, setTypingUsersByChat] = useState({});
   const [messagePaginationByChat, setMessagePaginationByChat] = useState({});
   const [loadingOlderMessages, setLoadingOlderMessages] = useState(false);
@@ -268,6 +270,7 @@ export default function ChatSystem({ standalone = false }) {
   const [statusSaving, setStatusSaving] = useState(false);
   const [avatarUploading, setAvatarUploading] = useState(false);
   const [activeCall, setActiveCall] = useState(null);
+  const [callMinimized, setCallMinimized] = useState(false);
   const [incomingCall, setIncomingCall] = useState(null);
   const [callStarting, setCallStarting] = useState(false);
   const [callResponding, setCallResponding] = useState(false);
@@ -735,9 +738,16 @@ export default function ChatSystem({ standalone = false }) {
           }
 
           matchedExistingConversation = true;
+          const currentUnreadCount = getUnreadCount(channel);
+          const nextUnreadCount =
+            !isOwnMessage && !shouldTreatAsRead
+              ? currentUnreadCount + 1
+              : currentUnreadCount;
           return {
             ...channel,
             lastMessage: message,
+            unreadCount: nextUnreadCount,
+            unread_count: nextUnreadCount,
           };
         });
 
@@ -771,17 +781,16 @@ export default function ChatSystem({ standalone = false }) {
             isDirect: true,
             title: senderUser.name,
             participants: [senderUser, currentUser].filter(Boolean),
-            unreadCount: 0,
-            unread_count: 0,
+            unreadCount: !isOwnMessage && !shouldTreatAsRead ? 1 : 0,
+            unread_count: !isOwnMessage && !shouldTreatAsRead ? 1 : 0,
             lastMessage: message,
           },
           ...nextChannels,
         ];
       });
 
-      // The database is the source of truth for unread counts. Refresh the
-      // conversation rows after a realtime message instead of incrementing a
-      // client-side counter.
+      // Realtime updates the badge immediately. Refresh the conversation rows
+      // as a reconciliation step so counts remain correct across tabs/devices.
       getChatConversationsService()
         .then((response) => {
           setChannels(getArrayPayload(response.data?.data));
@@ -878,6 +887,12 @@ export default function ChatSystem({ standalone = false }) {
       if (!chatId || !readAt || String(userId) === currentUserId) return;
       const localKey = resolveLocalChatKey({ chatId, channels, buddies, currentUserId });
       if (!localKey) return;
+      // Message info dialogs use this version to refresh their delivery/read
+      // recipients as soon as a participant's read receipt arrives.
+      setMessageInfoVersions((prev) => ({
+        ...prev,
+        [localKey]: (prev[localKey] || 0) + 1,
+      }));
       const otherReaders = readStates.filter(
         (reader) => reader.userId && String(reader.userId) !== currentUserId,
       );
@@ -1043,6 +1058,7 @@ export default function ChatSystem({ standalone = false }) {
       body: `${call.startedBy?.name || "A chat user"} is calling you`,
       tag: `chat-call-${call.id}`,
       url: `${CHAT_APP_BASE_PATH}/${encodeURIComponent(call.chatId || call.chat_id || "")}`,
+      preserveCall: true,
       requireInteraction: true,
     });
     playCallNotificationSound();
@@ -1455,16 +1471,28 @@ export default function ChatSystem({ standalone = false }) {
           });
           setTab("conversations");
         } else if (channel) {
+          const restoredChannelId = getChannelId(channel);
           setSelectedChat({
             type: "channel",
             source: "local",
-            id: getChannelId(channel),
+            id: restoredChannelId,
             title: getChannelName(channel),
-            subtitle: getChannelId(channel),
+            subtitle: restoredChannelId,
             imageUrl: getImageUrl(channel),
             currentUserId,
             raw: channel,
           });
+          // A refresh restores the group from the URL before the history
+          // effect runs. Persist the read state here as well so the initial
+          // unread count cannot remain visible for the restored group.
+          setChannels((previousChannels) =>
+            previousChannels.map((conversation) =>
+              String(getChannelId(conversation)) === String(restoredChannelId)
+                ? { ...conversation, unreadCount: 0, unread_count: 0 }
+                : conversation,
+            ),
+          );
+          markConversationReadService(restoredChannelId).catch(() => {});
           setTab("conversations");
         }
       }
@@ -1533,6 +1561,10 @@ export default function ChatSystem({ standalone = false }) {
     ? messagesByChat[selectedChat.id] || []
     : [];
   const activeCallIsAccepted = activeCall?.status === "accepted";
+
+  useEffect(() => {
+    if (activeCall?.id) setCallMinimized(false);
+  }, [activeCall?.id]);
 
   const selectBuddy = (buddy) => {
     const email = getBuddyEmail(buddy);
@@ -1690,11 +1722,18 @@ export default function ChatSystem({ standalone = false }) {
     const participants = Array.isArray(selectedChat.raw?.participants)
       ? selectedChat.raw.participants
       : [];
+    const participantIds = new Set(
+      participants
+        .map((participant) => String(getBuddySendId(participant) || ""))
+        .filter(Boolean),
+    );
 
     return uniqueUsersByIdentity(
-      participants.filter((participant) => !isCurrentUserRecord(participant)),
+      allVisibleBuddies.filter((user) =>
+        participantIds.has(String(getBuddySendId(user))),
+      ),
     );
-  }, [isCurrentUserRecord, selectedChat, uniqueUsersByIdentity]);
+  }, [allVisibleBuddies, selectedChat, uniqueUsersByIdentity]);
 
   const openAddMembersDialog = () => {
     setAddMemberUserIds([]);
@@ -2085,6 +2124,7 @@ export default function ChatSystem({ standalone = false }) {
   const handleEndActiveCall = async () => {
     if (!activeCall?.id || !activeCall?.chatId) {
       setActiveCall(null);
+      setCallMinimized(false);
       return;
     }
 
@@ -2094,6 +2134,7 @@ export default function ChatSystem({ standalone = false }) {
       setCallNotice(normalizeChatError(error));
     } finally {
       setActiveCall(null);
+      setCallMinimized(false);
     }
   };
 
@@ -2507,13 +2548,14 @@ export default function ChatSystem({ standalone = false }) {
         setSearchTerm={setSearchTerm}
         setTab={setTab}
       />
-      <ChatWindow
+      {adminPage ? <AdminPage embedded /> : <ChatWindow
         activeCall={activeCallIsAccepted ? null : activeCall}
         callSocketRef={callSocketRef}
         chatBoxRef={chatBoxRef}
         callStarting={callStarting || Boolean(activeCall) || Boolean(incomingCall)}
         availableChats={conversationItems}
         currentUser={currentUser}
+        messageInfoVersions={messageInfoVersions}
         editingMessage={editingMessage}
         enterToSend={enterToSend}
         currentMessages={currentMessages}
@@ -2555,7 +2597,7 @@ export default function ChatSystem({ standalone = false }) {
         setInputValue={setInputValue}
         setSelectedChat={setSelectedChat}
         uploading={uploading}
-      />
+      />}
       </Box>
       <IncomingCallDialog
         call={incomingCall}
@@ -2565,14 +2607,20 @@ export default function ChatSystem({ standalone = false }) {
         onDecline={() => handleRespondToCall("decline")}
       />
       <Dialog
-        open={Boolean(activeCallIsAccepted)}
+        open={Boolean(activeCallIsAccepted && !callMinimized)}
+        keepMounted
+        disableEscapeKeyDown
+        onClose={() => {}}
         fullWidth
-        maxWidth="md"
+        maxWidth="xl"
         PaperProps={{
           sx: {
             bgcolor: "#0f172a",
             borderRadius: 2,
             overflow: "hidden",
+            width: { xs: "calc(100vw - 24px)", sm: "calc(100vw - 48px)" },
+            maxWidth: 1280,
+            m: { xs: 1.5, sm: 3 },
           },
         }}
       >
@@ -2580,10 +2628,45 @@ export default function ChatSystem({ standalone = false }) {
           activeCall={activeCall}
           currentUser={currentUser}
           modal
+          onMinimize={() => setCallMinimized(true)}
           onEnd={handleEndActiveCall}
           socketRef={callSocketRef}
         />
       </Dialog>
+      {activeCallIsAccepted && callMinimized && (
+        <Box
+          sx={{
+            position: "fixed",
+            right: { xs: 12, sm: 24 },
+            bottom: { xs: 12, sm: 24 },
+            zIndex: 1400,
+            display: "flex",
+            alignItems: "center",
+            gap: 1,
+            px: 1.5,
+            py: 1,
+            bgcolor: "#0f172a",
+            color: "#fff",
+            borderRadius: 2,
+            boxShadow: "0 12px 35px rgba(0,0,0,.35)",
+          }}
+        >
+          <Box sx={{ minWidth: 0, mr: 1 }}>
+            <Typography variant="body2" fontWeight={800} noWrap>
+              {activeCall?.type === "video" ? "Video call" : "Voice call"}
+            </Typography>
+            <Typography variant="caption" sx={{ color: "#94a3b8" }} noWrap>
+              Call in progress
+            </Typography>
+          </Box>
+          <Button size="small" variant="outlined" onClick={() => setCallMinimized(false)} sx={{ color: "#fff", borderColor: "#64748b" }}>
+            Restore
+          </Button>
+          <Button size="small" variant="contained" color="error" onClick={handleEndActiveCall}>
+            End
+          </Button>
+        </Box>
+      )}
       <Snackbar
         open={Boolean(callNotice)}
         autoHideDuration={6000}

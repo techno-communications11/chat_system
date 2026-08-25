@@ -2,6 +2,7 @@ import Cookies from "js-cookie";
 
 const TOKEN_COOKIE_NAME = "token";
 const TOKEN_STORAGE_KEY = "chat_auth_token";
+const REFRESH_TOKEN_STORAGE_KEY = "chat_refresh_token";
 const APP_STORAGE_KEY = "chat_app_name";
 
 export const normalizeAuthToken = (value) => {
@@ -29,6 +30,16 @@ export const storeAuthToken = (value) => {
   return token;
 };
 
+export const storeAuthTokens = ({ accessToken, token, refreshToken } = {}) => {
+  const access = storeAuthToken(accessToken || token);
+  const refresh = normalizeAuthToken(refreshToken);
+  if (refresh) sessionStorage.setItem(REFRESH_TOKEN_STORAGE_KEY, refresh);
+  return { accessToken: access, refreshToken: refresh };
+};
+
+export const getStoredRefreshToken = () =>
+  normalizeAuthToken(sessionStorage.getItem(REFRESH_TOKEN_STORAGE_KEY));
+
 export const getStoredChatAppName = () =>
   localStorage.getItem(APP_STORAGE_KEY) || "chat_system";
 
@@ -46,6 +57,7 @@ export const clearAuthToken = () => {
   Cookies.remove(TOKEN_COOKIE_NAME, { path: "/" });
   sessionStorage.removeItem(TOKEN_STORAGE_KEY);
   localStorage.removeItem(TOKEN_STORAGE_KEY);
+  sessionStorage.removeItem(REFRESH_TOKEN_STORAGE_KEY);
 };
 
 const decodeBase64Url = (value) => {

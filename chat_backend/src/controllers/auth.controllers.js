@@ -1,6 +1,7 @@
 import {
   registerChatUser,
   loginChatUser,
+  refreshChatUser,
 } from "../Servicess/chatUser.services.js";
 import { handleRequest, sendSuccess } from "../helpers/controller.helpers.js";
 
@@ -24,3 +25,11 @@ export const loginUser = handleRequest(async (req, res) => {
   });
   return sendSuccess(res, "Chat login successful", data);
 });
+
+export const refreshUser = handleRequest(async (req, res) =>
+  sendSuccess(
+    res,
+    "Chat access token refreshed",
+    await refreshChatUser({ refreshToken: req.body?.refreshToken }),
+  ),
+);

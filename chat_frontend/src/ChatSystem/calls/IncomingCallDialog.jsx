@@ -19,7 +19,7 @@ export default function IncomingCallDialog({
   onDecline,
 }) {
   return (
-    <Dialog open={Boolean(call)} maxWidth="xs" fullWidth disableEscapeKeyDown>
+    <Dialog open={Boolean(call)} maxWidth="xs" fullWidth disableEscapeKeyDown onClose={() => {}}>
       <DialogContent sx={{ textAlign: "center", pt: 4 }}>
         <Avatar
           sx={{

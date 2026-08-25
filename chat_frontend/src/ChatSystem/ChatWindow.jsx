@@ -948,6 +948,7 @@ export default function ChatWindow({
   currentUser,
   callSocketRef,
   currentMessages,
+  messageInfoVersions = {},
   hasOlderMessages = false,
   loadingOlderMessages = false,
   editingMessage,
@@ -1601,6 +1602,7 @@ export default function ChatWindow({
                     <MessageRowComponent
                       message={msg}
                       chatId={selectedChat.chatId || selectedChat.id}
+                      messageInfoVersion={messageInfoVersions[selectedChat.chatId || selectedChat.id] || 0}
                       currentUser={currentUser}
                       mentionableUsers={
                         selectedChat.type === "channel" ? mentionableUsers : []

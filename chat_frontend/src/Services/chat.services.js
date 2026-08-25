@@ -15,6 +15,27 @@ const withPersonEmail = (params = {}) => {
 export const loginChatService = (payload) =>
   api.post("/chat-service/auth/login", payload);
 
+export const getAdminDashboardService = () =>
+  api.get("/chat-service/admin/dashboard", getChatHeaders());
+
+export const getAdminUsersService = (params = {}) =>
+  api.get("/chat-service/admin/users", { ...getChatHeaders(), params });
+
+export const getAdminUserService = (userId) =>
+  api.get(`/chat-service/admin/users/${encodeURIComponent(userId)}`, getChatHeaders());
+
+export const createAdminUserService = (payload) =>
+  api.post("/chat-service/admin/users", payload, getChatHeaders());
+
+export const bulkCreateAdminUsersService = (users) =>
+  api.post("/chat-service/admin/users/bulk", { users }, getChatHeaders());
+
+export const updateAdminUserService = (userId, payload) =>
+  api.patch(`/chat-service/admin/users/${encodeURIComponent(userId)}`, payload, getChatHeaders());
+
+export const changeAdminUserPasswordService = (userId, password) =>
+  api.patch(`/chat-service/admin/users/${encodeURIComponent(userId)}/password`, { password }, getChatHeaders());
+
 export const getChatStatusService = () =>
   api.get("/chat-service/me", getChatHeaders());
 
