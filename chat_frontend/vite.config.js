@@ -9,7 +9,7 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [react()],
     server: {
-      host: "127.0.0.1",
+      host: env.VITE_DEV_HOST || "0.0.0.0",
       port: 5174,
       strictPort: true,
       // Google Identity Services monitors its OAuth popup through window.closed.

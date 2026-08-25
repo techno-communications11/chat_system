@@ -48,6 +48,9 @@ export const getChatUsersService = (params = {}) =>
     params: withPersonEmail({ limit: 100, ...params }),
   });
 
+export const getChatUserProfileService = (userId) =>
+  api.get(`/chat-service/users/${encodeURIComponent(userId)}`, getChatHeaders());
+
 export const getChatConversationsService = (params = {}) =>
   api.get("/chat-service/conversations", {
     ...getChatHeaders(),
@@ -75,6 +78,12 @@ export const addGroupMembersService = (chatId, userIds) =>
     getChatHeaders(),
   );
 
+export const removeGroupMemberService = (chatId, userId) =>
+  api.delete(
+    `/chat-service/conversations/${encodeURIComponent(chatId)}/members/${encodeURIComponent(userId)}`,
+    getChatHeaders(),
+  );
+
 export const leaveGroupConversationService = (chatId) =>
   api.post(
     `/chat-service/conversations/${encodeURIComponent(chatId)}/leave`,
@@ -96,6 +105,12 @@ export const getChatMessagesService = (chatId, params = {}) =>
       ...getChatHeaders(),
       params,
     },
+  );
+
+export const getChatMessageInfoService = (chatId, messageId) =>
+  api.get(
+    `/chat-service/conversations/${encodeURIComponent(chatId)}/messages/${encodeURIComponent(messageId)}/info`,
+    getChatHeaders(),
   );
 
 export const clearChatHistoryService = (chatId) =>

@@ -20,7 +20,7 @@ const ConversationList = ({
   onSelectChannel,
   selectedChat,
 }) => {
-  const [conversationFilter, setConversationFilter] = useState("all");
+  const [conversationFilter, setConversationFilter] = useState("direct");
   const visibleItems = useMemo(() => filteredItems.filter((item) => {
     if (conversationFilter === "direct") return item.__conversationType === "person";
     if (conversationFilter === "groups") return item.__conversationType === "channel";
@@ -70,7 +70,6 @@ const ConversationList = ({
             },
           }}
         >
-          <Tab value="all" label="All" />
           <Tab value="direct" label="Chats" />
           <Tab value="groups" label="Groups" />
         </Tabs>

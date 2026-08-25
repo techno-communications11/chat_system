@@ -11,6 +11,7 @@ export function useChatRealtime({
   onMessageUpdated,
   onTyping,
   onMessageRead,
+  onMemberRemoved,
   onReactionAdded,
   onPresence,
   onAvatar,
@@ -32,6 +33,7 @@ export function useChatRealtime({
     onMessageUpdated,
     onTyping,
     onMessageRead,
+    onMemberRemoved,
     onReactionAdded,
     onPresence,
     onAvatar,
@@ -52,6 +54,7 @@ export function useChatRealtime({
     onMessageUpdated,
     onTyping,
     onMessageRead,
+    onMemberRemoved,
     onReactionAdded,
     onPresence,
     onAvatar,
@@ -104,6 +107,10 @@ export function useChatRealtime({
 
     socket.on("message:read", (payload) => {
       handlersRef.current.onMessageRead?.(payload);
+    });
+
+    socket.on("conversation:member-removed", (payload) => {
+      handlersRef.current.onMemberRemoved?.(payload);
     });
 
     socket.on("reaction:added", (payload) => {

@@ -27,7 +27,7 @@ function loadGoogleIdentityServices() {
   return googleIdentityScriptPromise;
 }
 
-async function getGoogleAccessToken() {
+async function getGoogleAccessToken({ forceAccountSelection = false } = {}) {
   const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
   if (!clientId) {
@@ -37,6 +37,7 @@ async function getGoogleAccessToken() {
   }
 
   if (
+    !forceAccountSelection &&
     googleAccessToken &&
     Date.now() < googleAccessTokenExpiresAt - TOKEN_REFRESH_BUFFER_MS
   ) {
@@ -69,7 +70,9 @@ async function getGoogleAccessToken() {
     });
 
     tokenClient.requestAccessToken({
-      prompt: googleAccessToken ? "" : "consent",
+      // Scheduling must always let the user choose which Google account owns
+      // the calendar event, even when another token is already cached.
+      prompt: forceAccountSelection ? "select_account" : googleAccessToken ? "" : "consent",
     });
   });
 }
@@ -108,7 +111,7 @@ export async function createGoogleCalendarEvent({
   ]
     .filter((email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
     .map((email) => ({ email }));
-  const token = await getGoogleAccessToken();
+  const token = await getGoogleAccessToken({ forceAccountSelection: true });
   const end = new Date(start.getTime() + duration * 60_000);
   const event = {
     summary: String(title || "Scheduled call").trim() || "Scheduled call",

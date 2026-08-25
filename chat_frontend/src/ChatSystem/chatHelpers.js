@@ -189,8 +189,6 @@ export const getUnreadCount = (item) => {
   const value =
     item?.unreadCount ??
     item?.unread_count ??
-    item?.unread ??
-    item?.unreadMessages ??
     0;
 
   const count = Number(value);

@@ -3,6 +3,11 @@ import jwt from "jsonwebtoken";
 import { Op } from "sequelize";
 import serverConfig from "../config/server.config.js";
 import ChatUser from "../modules/chatUser.module.js";
+import ChatUserSettings from "../modules/chatUserSettings.module.js";
+import ChatBlockedUser from "../modules/chatBlockedUser.module.js";
+import ChatMutedConversation from "../modules/chatMutedConversation.module.js";
+import ChatUserPresence from "../modules/chatUserPresence.module.js";
+import ChatMarket from "../modules/chatMarket.module.js";
 import ChatRole from "../modules/chatRole.module.js";
 import { normalizeAppName } from "./applicationDirectory.services.js";
 import { chatConfig } from "../config/chat.config.js";
@@ -52,19 +57,32 @@ const toPublicUser = (user) => {
   const plainUser = user.get ? user.get({ plain: true }) : user;
   const roles = plainUser.roles || [];
   const roleNames = roles.map((role) => role.name);
+  const presenceSession = (plainUser.presenceSessions || [])
+    .slice()
+    .sort((a, b) => new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0))[0];
+  const manager = plainUser.manager || null;
+  const market = plainUser.marketRelation || null;
+  const presence = presenceSession?.presence || "offline";
+  const lastSeenAt = presenceSession?.lastSeenAt || null;
+  const managerName = manager?.displayName || null;
+  const marketName = market?.name || null;
   const profile = {
     id: String(plainUser.id),
     email: plainUser.email,
     username: plainUser.username,
     name: plainUser.displayName,
     displayName: plainUser.displayName,
+    designation: plainUser.designation,
+    managerUserId: plainUser.managerUserId ? String(plainUser.managerUserId) : null,
+    managerName,
+    marketId: plainUser.marketId || null,
+    market: marketName,
     avatarUrl: plainUser.avatarUrl,
     status: plainUser.status,
-    presence: plainUser.presence,
-    lastSeenAt: plainUser.lastSeenAt,
+    presence,
+    lastSeenAt,
     role: roleNames[0] || "member",
     roles: roleNames,
-    metadata: plainUser.metadata || {},
   };
 
   return {
@@ -75,10 +93,15 @@ const toPublicUser = (user) => {
     username: plainUser.username,
     name: plainUser.displayName,
     display_name: plainUser.displayName,
+    designation: plainUser.designation,
+    managerUserId: plainUser.managerUserId ? String(plainUser.managerUserId) : null,
+    managerName,
+    marketId: plainUser.marketId || null,
+    market: marketName,
     avatarUrl: plainUser.avatarUrl,
     status: plainUser.status,
-    presence: plainUser.presence,
-    lastSeenAt: plainUser.lastSeenAt,
+    presence,
+    lastSeenAt,
     role: roleNames[0] || "member",
     roles: roleNames,
     provider: "local_chat",
@@ -120,6 +143,9 @@ const issueToken = (user, { appName } = {}) => {
 
 const includeRoles = [
   { model: ChatRole, as: "roles", through: { attributes: [] } },
+  { model: ChatUser, as: "manager", attributes: ["id", "displayName", "email", "username"] },
+  { model: ChatMarket, as: "marketRelation", attributes: ["id", "name", "active"] },
+  { model: ChatUserPresence, as: "presenceSessions" },
 ];
 
 export const listChatDirectoryUsers = async ({
@@ -165,13 +191,47 @@ export const getChatDirectoryUserById = async (userId) => {
   return user ? toPublicUser(user) : null;
 };
 
+const getOrCreateChatUserSettings = async (user) => {
+  const [settings] = await ChatUserSettings.findOrCreate({
+    where: { userId: user.id },
+    defaults: {
+      userId: user.id,
+      themeMode: "light",
+      desktopNotifications: false,
+      enterToSend: false,
+    },
+  });
+  return settings;
+};
+
+const getBlockedUserIds = async (userId) => {
+  const rows = await ChatBlockedUser.findAll({
+    where: { userId },
+    attributes: ["blockedUserId"],
+  });
+  return rows.map((row) => String(row.blockedUserId));
+};
+
+const getMutedChatIds = async (userId) => {
+  const rows = await ChatMutedConversation.findAll({
+    where: { userId },
+    attributes: ["conversationId"],
+  });
+  return rows.map((row) => String(row.conversationId));
+};
+
+const serializeChatUserSettings = async (settings) => ({
+  themeMode: settings.themeMode === "dark" ? "dark" : "light",
+  desktopNotifications: settings.desktopNotifications === true,
+  enterToSend: settings.enterToSend === true,
+  mutedChatIds: await getMutedChatIds(settings.userId),
+  blockedUserIds: await getBlockedUserIds(settings.userId),
+});
+
 export const getChatUserSettings = async ({ userId }) => {
   const user = await ChatUser.findByPk(Number(userId) || 0);
-  const settings = user?.metadata?.settings || {};
-
-  return {
-    desktopNotifications: settings.desktopNotifications === true,
-  };
+  if (!user) return serializeChatUserSettings({ userId: Number(userId) || 0 });
+  return serializeChatUserSettings(await getOrCreateChatUserSettings(user));
 };
 
 export const updateChatUserSettings = async ({ userId, settings = {} }) => {
@@ -183,23 +243,50 @@ export const updateChatUserSettings = async ({ userId, settings = {} }) => {
     throw error;
   }
 
-  const nextSettings = {
-    ...(user.metadata?.settings || {}),
-    ...(typeof settings.desktopNotifications === "boolean"
-      ? { desktopNotifications: settings.desktopNotifications }
-      : {}),
-  };
+  const userSettings = await getOrCreateChatUserSettings(user);
+  const updates = {};
+  if (typeof settings.desktopNotifications === "boolean") {
+    updates.desktopNotifications = settings.desktopNotifications;
+  }
+  if (settings.themeMode === "dark" || settings.themeMode === "light") {
+    updates.themeMode = settings.themeMode;
+  }
+  if (typeof settings.enterToSend === "boolean") {
+    updates.enterToSend = settings.enterToSend;
+  }
+  await userSettings.update(updates);
 
-  await user.update({
-    metadata: {
-      ...(user.metadata || {}),
-      settings: nextSettings,
-    },
+  if (Array.isArray(settings.mutedChatIds)) {
+    const mutedChatIds = [
+      ...new Set(settings.mutedChatIds.map((value) => String(value).trim()).filter(Boolean)),
+    ];
+    await ChatMutedConversation.destroy({ where: { userId: user.id } });
+    if (mutedChatIds.length > 0) {
+      await ChatMutedConversation.bulkCreate(
+        mutedChatIds.map((conversationId) => ({
+          userId: user.id,
+          conversationId,
+        })),
+      );
+    }
+  }
+
+  if (Array.isArray(settings.blockedUserIds)) {
+    const blockedUserIds = [
+      ...new Set(settings.blockedUserIds.map((value) => String(value).trim()).filter(Boolean)),
+    ];
+    await ChatBlockedUser.destroy({ where: { userId: user.id } });
+    if (blockedUserIds.length > 0) {
+      await ChatBlockedUser.bulkCreate(
+        blockedUserIds.map((blockedUserId) => ({ userId: user.id, blockedUserId })),
+      );
+    }
+  }
+
+  return serializeChatUserSettings({
+    ...userSettings.toJSON(),
+    userId: user.id,
   });
-
-  return {
-    desktopNotifications: nextSettings.desktopNotifications === true,
-  };
 };
 
 export const registerChatUser = async ({
@@ -277,7 +364,15 @@ export const loginChatUser = async ({ login, password, appName }) => {
     throw error;
   }
 
-  await user.update({ presence: "online", lastSeenAt: new Date() });
+  const now = new Date();
+  await ChatUserPresence.upsert({
+    userId: user.id,
+    sessionId: "primary",
+    presence: "online",
+    lastSeenAt: now,
+    connectedAt: now,
+    disconnectedAt: null,
+  });
   const fullUser = await ChatUser.findByPk(user.id, { include: includeRoles });
 
   return {

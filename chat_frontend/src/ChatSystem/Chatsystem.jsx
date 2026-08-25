@@ -51,6 +51,7 @@ import InternalCallPanel from "./calls/InternalCallPanel";
 import { useCallTone } from "./calls/useCallTone";
 import {
   getChatMessagesService,
+  getChatSettingsService,
   clearChatHistoryService,
   getChatStatusService,
   getChatUsersService,
@@ -61,6 +62,7 @@ import {
   deleteConversationMessageService,
   editConversationMessageService,
   leaveGroupConversationService,
+  removeGroupMemberService,
   transferGroupOwnershipService,
   markConversationReadService,
   openDirectChatService,
@@ -76,8 +78,10 @@ import {
   updateChatAvatarService,
   updateChatAvatarUrlService,
   updateChatStatusService,
+  updateChatSettingsService,
 } from "../Services/chat.services";
 import { clearAuthToken, getTokenUser } from "../utils/authToken";
+import { useThemeMode } from "../themeMode";
 import { getInitial } from "./sidebar/sidebarUtils";
 import { AddMembersDialog, GroupCreationDialog } from "./chatWindow/GroupDialogs";
 
@@ -120,6 +124,42 @@ const getConversationActivityTime = (conversation) => {
   }
   const parsedValue = new Date(value).getTime();
   return Number.isFinite(parsedValue) ? parsedValue : 0;
+};
+
+const hasConversationHistory = (conversation) => Boolean(
+  conversation?.lastMessage ||
+  conversation?.last_message ||
+  conversation?.lastMessageAt ||
+  conversation?.last_message_at
+);
+
+const escapeMentionRegExp = (value) =>
+  String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const messageMentionsUser = (message, userId, userEmail) => {
+  const mentions = message?.metadata?.mentions || message?.mentions || [];
+  if (!Array.isArray(mentions)) return false;
+
+  return mentions.some((mention) => {
+    const mentionId = String(
+      mention?.userId || mention?.user_id || mention?.id || "",
+    );
+    const mentionEmail = String(mention?.email || "").trim().toLowerCase();
+    return (
+      (userId && mentionId === userId) ||
+      (userEmail && mentionEmail === userEmail)
+    );
+  });
+};
+
+const textContainsMention = (text, label) => {
+  const normalizedLabel = String(label || "").trim();
+  if (!normalizedLabel) return false;
+
+  return new RegExp(
+    `(?:^|\\s)@${escapeMentionRegExp(normalizedLabel)}(?=\\s|$|[.,!?;:])`,
+    "i",
+  ).test(String(text || ""));
 };
 
 const isMessageReadByUser = (message, currentUserId, currentUserEmail) => {
@@ -182,6 +222,7 @@ const getConversationIdFromResponse = (response) => {
 };
 
 export default function ChatSystem({ standalone = false }) {
+  const { setMode } = useThemeMode();
   const navigate = useNavigate();
   const location = useLocation();
   const settingsPage = location.pathname.endsWith("/settings");
@@ -190,13 +231,11 @@ export default function ChatSystem({ standalone = false }) {
   const chatBoxRef = useRef(null);
   const initialFetchStartedRef = useRef(false);
   const loadedChatHistoryRef = useRef(new Set());
-  const readConversationKeysRef = useRef(new Set());
   const handledRealtimeMessageKeysRef = useRef(new Set());
   const chatClearVersionsRef = useRef(new Map());
   const realtimeStartedAtRef = useRef(Date.now());
 
   const [, setTab] = useState("conversations");
-  const [readStateVersion, setReadStateVersion] = useState(0);
   const [buddies, setBuddies] = useState([]);
   const [channels, setChannels] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -207,7 +246,7 @@ export default function ChatSystem({ standalone = false }) {
   const [messagePaginationByChat, setMessagePaginationByChat] = useState({});
   const [loadingOlderMessages, setLoadingOlderMessages] = useState(false);
   const [inputValue, setInputValue] = useState("");
-  const [enterToSend, setEnterToSend] = useState(() => localStorage.getItem("chat-enter-to-send") === "true");
+  const [enterToSend, setEnterToSend] = useState(false);
   const [replyToMessage, setReplyToMessage] = useState(null);
   const [editingMessage, setEditingMessage] = useState(null);
   const [pendingFiles, setPendingFiles] = useState([]);
@@ -254,20 +293,8 @@ export default function ChatSystem({ standalone = false }) {
     setConfirmationDialog(null);
   };
 
-  const [mutedChatIds, setMutedChatIds] = useState(() => {
-    try {
-      return JSON.parse(localStorage.getItem("chat_muted_chat_ids") || localStorage.getItem("chat_muted_group_ids") || "[]").map(String);
-    } catch {
-      return [];
-    }
-  });
-  const [blockedUserIds, setBlockedUserIds] = useState(() => {
-    try {
-      return JSON.parse(localStorage.getItem("chat_blocked_user_ids") || "[]").map(String);
-    } catch {
-      return [];
-    }
-  });
+  const [mutedChatIds, setMutedChatIds] = useState([]);
+  const [blockedUserIds, setBlockedUserIds] = useState([]);
   const filterBlockedMessages = useCallback(
     (messages = []) => messages.filter((message) => !blockedUserIds.includes(String(message.authorId))),
     [blockedUserIds],
@@ -441,6 +468,41 @@ export default function ChatSystem({ standalone = false }) {
       : selectedChat?.chatId || null;
 
   const visibleBuddies = useMemo(
+    () => {
+      const getUserIds = (user) => [
+        user?.id,
+        user?.userId,
+        user?.user_id,
+        user?.appUserId,
+        user?.app_user_id,
+      ].filter(Boolean).map(String);
+      const directParticipants = channels
+        .filter((conversation) =>
+          !isSelfConversation(conversation) &&
+          hasConversationHistory(conversation) &&
+          (conversation?.isDirect ||
+            conversation?.type === "direct" ||
+            conversation?.conversationType === "direct"),
+        )
+        .flatMap((conversation) =>
+        Array.isArray(conversation?.participants) ? conversation.participants : [],
+      );
+      const hasPreviousDirectConversation = (buddy) => {
+        const buddyIds = getUserIds(buddy);
+        const buddyEmail = String(getBuddyEmail(buddy) || "").toLowerCase();
+        return directParticipants.some((participant) =>
+          getUserIds(participant).some((participantId) => buddyIds.includes(participantId)) ||
+          (buddyEmail && String(getBuddyEmail(participant)).toLowerCase() === buddyEmail),
+        );
+      };
+
+      return uniqueUsersByIdentity(
+        buddies.filter((buddy) => !isCurrentUserRecord(buddy) && hasPreviousDirectConversation(buddy)),
+      );
+    },
+    [buddies, channels, isCurrentUserRecord, isSelfConversation, uniqueUsersByIdentity],
+  );
+  const allVisibleBuddies = useMemo(
     () => uniqueUsersByIdentity(buddies.filter((buddy) => !isCurrentUserRecord(buddy))),
     [buddies, isCurrentUserRecord, uniqueUsersByIdentity],
   );
@@ -470,7 +532,8 @@ export default function ChatSystem({ standalone = false }) {
   );
   const conversationItems = useMemo(
     () => {
-      const directRows = visibleBuddies.map((buddy) => {
+      const buddiesForList = searchTerm.trim() ? allVisibleBuddies : visibleBuddies;
+      const directRows = buddiesForList.map((buddy) => {
         const buddyId = String(getBuddySendId(buddy));
         const buddyEmail = String(getBuddyEmail(buddy)).toLowerCase();
         const buddyName = String(getBuddyName(buddy)).trim().toLowerCase();
@@ -498,20 +561,13 @@ export default function ChatSystem({ standalone = false }) {
           buddy?.chat_id ||
           buddy?.chatId ||
           "";
-        const isRead =
-          readStateVersion >= 0 &&
-          (readConversationKeysRef.current.has(`user:${buddyId}`) ||
-            readConversationKeysRef.current.has(`email:${buddyEmail}`) ||
-            (directConversationId &&
-              readConversationKeysRef.current.has(`chat:${String(directConversationId)}`)));
-
         return {
           ...(matchingDirectConversation || {}),
           ...buddy,
           directConversationId,
-          unreadCount: isRead
-            ? 0
-            : getUnreadCount(matchingDirectConversation) || getUnreadCount(buddy),
+          unreadCount: matchingDirectConversation
+            ? getUnreadCount(matchingDirectConversation)
+            : getUnreadCount(buddy),
           lastMessage:
             matchingDirectConversation?.lastMessage ||
             matchingDirectConversation?.last_message ||
@@ -543,7 +599,7 @@ export default function ChatSystem({ standalone = false }) {
           getConversationActivityTime(second) - getConversationActivityTime(first),
       );
     },
-    [readStateVersion, visibleBuddies, visibleDirectChannels, visibleGroupChannels],
+    [allVisibleBuddies, searchTerm, visibleBuddies, visibleDirectChannels, visibleGroupChannels],
   );
   const totalUnreadCount = useMemo(
     () => {
@@ -645,6 +701,11 @@ export default function ChatSystem({ standalone = false }) {
         currentUserId,
         currentUserEmail,
       );
+      const isMentioned = messageMentionsUser(
+        message,
+        currentUserId,
+        currentUserEmail,
+      );
 
       const shouldTreatAsRead = isActiveChat && !document.hidden;
 
@@ -676,7 +737,6 @@ export default function ChatSystem({ standalone = false }) {
           matchedExistingConversation = true;
           return {
             ...channel,
-            unreadCount: shouldTreatAsRead || isOwnMessage ? 0 : getUnreadCount(channel) + 1,
             lastMessage: message,
           };
         });
@@ -711,13 +771,22 @@ export default function ChatSystem({ standalone = false }) {
             isDirect: true,
             title: senderUser.name,
             participants: [senderUser, currentUser].filter(Boolean),
-            unreadCount: shouldTreatAsRead ? 0 : 1,
-            unread_count: shouldTreatAsRead ? 0 : 1,
+            unreadCount: 0,
+            unread_count: 0,
             lastMessage: message,
           },
           ...nextChannels,
         ];
       });
+
+      // The database is the source of truth for unread counts. Refresh the
+      // conversation rows after a realtime message instead of incrementing a
+      // client-side counter.
+      getChatConversationsService()
+        .then((response) => {
+          setChannels(getArrayPayload(response.data?.data));
+        })
+        .catch(() => {});
 
       const shouldNotify =
         !isOwnMessage &&
@@ -725,9 +794,10 @@ export default function ChatSystem({ standalone = false }) {
         !isAlreadyLoaded &&
         isNewSinceRealtimeStarted &&
         !isReadByCurrentUser;
+      const shouldNotifyMention = shouldNotify && isMentioned;
 
       if (shouldNotify) {
-        if (mutedChatIds.includes(String(chatId))) return;
+        if (mutedChatIds.includes(String(chatId)) && !shouldNotifyMention) return;
 
         const senderName =
           message?.sender?.name ||
@@ -735,9 +805,11 @@ export default function ChatSystem({ standalone = false }) {
           buddies.find((buddy) => getBuddySendId(buddy) === senderId)?.name ||
           "Someone";
 
-         showChatNotification({
-          title: senderName,
-          body: getMessageText(message),
+        showChatNotification({
+          title: shouldNotifyMention ? `${senderName} mentioned you` : senderName,
+          body: shouldNotifyMention
+            ? `${senderName}: ${getMessageText(message)}`
+            : getMessageText(message),
           icon: getImageUrl(message?.sender),
            tag: `chat-${chatId}`,
            url: localKey
@@ -763,6 +835,7 @@ export default function ChatSystem({ standalone = false }) {
       currentUser,
       currentUserEmail,
       currentUserId,
+      messageMentionsUser,
       messagesByChat,
       mutedChatIds,
       navigate,
@@ -1016,6 +1089,53 @@ export default function ChatSystem({ standalone = false }) {
     setCallNotice("The user is offline, busy, or in Do Not Disturb. A missed call was saved.");
   }, []);
 
+  const handleRealtimeMemberRemoved = useCallback(({ chatId, removedUser, systemMessage }) => {
+    if (!chatId || !removedUser) return;
+    const removedUserId = String(getBuddySendId(removedUser) || removedUser.userId || "");
+    const isCurrentUserRemoved = removedUserId === currentUserId;
+
+    if (systemMessage && !isCurrentUserRemoved) {
+      const normalizedMessage = normalizeRealtimeMessage(systemMessage, {
+        id: selectedChat?.id || chatId,
+        currentUserId,
+      });
+      if (normalizedMessage) {
+        setMessagesByChat((prev) => ({
+          ...prev,
+          [String(chatId)]: [...(prev[String(chatId)] || []), normalizedMessage],
+        }));
+      }
+    }
+
+    setChannels((prev) => prev
+      .map((channel) => String(getChannelId(channel)) === String(chatId)
+        ? {
+            ...channel,
+            participants: (channel.participants || []).filter(
+              (participant) => String(getBuddySendId(participant)) !== removedUserId,
+            ),
+          }
+        : channel)
+      .filter((channel) => !isCurrentUserRemoved || String(getChannelId(channel)) !== String(chatId)));
+
+    if (isCurrentUserRemoved && String(selectedChat?.chatId || selectedChat?.id) === String(chatId)) {
+      setSelectedChat(null);
+      navigate(CHAT_APP_BASE_PATH);
+    } else if (!isCurrentUserRemoved && String(selectedChat?.id) === String(chatId)) {
+      setSelectedChat((prev) => prev ? {
+        ...prev,
+        raw: {
+          ...(prev.raw || {}),
+          participants: (prev.raw?.participants || []).filter(
+            (participant) => String(getBuddySendId(participant)) !== removedUserId,
+          ),
+        },
+      } : prev);
+    }
+
+    setSendError(`${getBuddyName(removedUser)} was removed from the group.`);
+  }, [currentUserId, navigate, selectedChat?.chatId, selectedChat?.id]);
+
   const callSocketRef = useChatRealtime({
     enabled: Boolean(currentUserId),
     activeConversationId,
@@ -1028,6 +1148,7 @@ export default function ChatSystem({ standalone = false }) {
       }));
     }, []),
     onMessageRead: handleRealtimeMessageRead,
+    onMemberRemoved: handleRealtimeMemberRemoved,
     onReactionAdded: handleRealtimeReactionAdded,
     onPresence: handleRealtimePresence,
     onAvatar: handleRealtimeAvatar,
@@ -1040,98 +1161,43 @@ export default function ChatSystem({ standalone = false }) {
     onCallMissed: handleRealtimeCallMissed,
   });
 
-  const clearUnreadForChat = useCallback(({ chatId, userId, email } = {}) => {
-    const normalizedChatId = String(chatId || "");
-    const normalizedUserId = String(userId || "");
-    const normalizedEmail = String(email || "").toLowerCase();
-
-    if (normalizedChatId) readConversationKeysRef.current.add(`chat:${normalizedChatId}`);
-    if (normalizedUserId) readConversationKeysRef.current.add(`user:${normalizedUserId}`);
-    if (normalizedEmail) readConversationKeysRef.current.add(`email:${normalizedEmail}`);
-    setReadStateVersion((version) => version + 1);
-
-    setChannels((prev) =>
-      prev.map((item) => {
-        const conversationId = String(item?.chat_id || item?.chatId || item?.id || "");
-        const channelId = String(getChannelId(item) || "");
-        const itemUserId = String(
-          item?.user_id ||
-            item?.userId ||
-            item?.peer_id ||
-            item?.peerId ||
-            item?.other_user_id ||
-            item?.otherUserId ||
-            "",
-        );
-        const itemEmail = String(
-          item?.email || item?.email_id || item?.user_email || item?.userEmail || "",
-        ).toLowerCase();
-        const shouldClear =
-          (normalizedChatId &&
-            (conversationId === normalizedChatId || channelId === normalizedChatId)) ||
-          (normalizedUserId &&
-            (itemUserId === normalizedUserId ||
-              (Array.isArray(item?.participants) &&
-                item.participants.some(
-                  (participant) => String(getBuddySendId(participant)) === normalizedUserId,
-                )))) ||
-          (normalizedEmail && itemEmail === normalizedEmail) ||
-          (normalizedEmail &&
-            Array.isArray(item?.participants) &&
-            item.participants.some(
-              (participant) => String(getBuddyEmail(participant)).toLowerCase() === normalizedEmail,
-            ));
-
-        return shouldClear
-          ? { ...item, unreadCount: 0, unread_count: 0, unread: 0, unreadMessages: 0 }
-          : item;
-      }),
-    );
-
-    setBuddies((prev) =>
-      prev.map((buddy) => {
-        const shouldClear =
-          (normalizedUserId && String(getBuddySendId(buddy)) === normalizedUserId) ||
-          (normalizedEmail && String(getBuddyEmail(buddy)).toLowerCase() === normalizedEmail);
-
-        return shouldClear
-          ? { ...buddy, unreadCount: 0, unread_count: 0, unread: 0, unreadMessages: 0 }
-          : buddy;
-      }),
-    );
-
-    setSelectedChat((prev) => {
-      if (!prev) return prev;
-
-      const shouldClear =
-        (normalizedChatId &&
-          (String(prev.id || "") === normalizedChatId ||
-            String(prev.chatId || "") === normalizedChatId)) ||
-        (normalizedUserId && String(prev.id || "") === normalizedUserId);
-
-      return shouldClear
-        ? {
-            ...prev,
-            raw: {
-              ...(prev.raw || {}),
-              unreadCount: 0,
-              unread_count: 0,
-              unread: 0,
-              unreadMessages: 0,
-            },
-          }
-        : prev;
-    });
-  }, []);
+  const clearUnreadForChat = useCallback(() => {}, []);
 
   const markChatAsRead = useCallback(
     async ({ chatId, userId, email } = {}) => {
       if (!chatId) return;
 
-      await markConversationReadService(chatId);
-      clearUnreadForChat({ chatId, userId, email });
+      const response = await markConversationReadService(chatId);
+      const markedChatId = String(
+        response.data?.data?.chatId ||
+          response.data?.data?.chat_id ||
+          chatId,
+      );
+
+      // The successful read response is already database-backed. Apply its
+      // zero unread count immediately so the badge changes in realtime.
+      setChannels((previousChannels) =>
+        previousChannels.map((channel) => {
+          const channelIds = [
+            channel?.id,
+            channel?.chatId,
+            channel?.chat_id,
+            getChannelId(channel),
+          ]
+            .filter(Boolean)
+            .map(String);
+
+          return channelIds.includes(markedChatId)
+            ? {
+                ...channel,
+                unreadCount: 0,
+                unread_count: 0,
+              }
+            : channel;
+        }),
+      );
     },
-    [clearUnreadForChat],
+    [],
   );
 
   useEffect(() => {
@@ -1190,6 +1256,10 @@ export default function ChatSystem({ standalone = false }) {
         email: chat.subtitle || getBuddyEmail(chat.raw),
       });
       const messagesResponse = await getChatMessagesService(chatId);
+      // Loading history also updates the participant's lastReadAt in the
+      // database. Fetch the conversation list once more so the badge reflects
+      // that persisted state, even if an earlier refresh was still in flight.
+      await markChatAsRead({ chatId });
       if ((chatClearVersionsRef.current.get(chatKey) || 0) !== requestClearVersion) return;
       const normalizedMessages = filterBlockedMessages(normalizeChatMessages(
         messagesResponse.data?.data,
@@ -1220,6 +1290,7 @@ export default function ChatSystem({ standalone = false }) {
     try {
       await markChatAsRead({ chatId: chat.id });
       const messagesResponse = await getChatMessagesService(chat.id);
+      await markChatAsRead({ chatId: chat.id });
       if ((chatClearVersionsRef.current.get(chatKey) || 0) !== requestClearVersion) return;
       const normalizedMessages = filterBlockedMessages(normalizeChatMessages(
         messagesResponse.data?.data,
@@ -1288,11 +1359,26 @@ export default function ChatSystem({ standalone = false }) {
     setLoadError("");
 
     try {
-      const [buddyResponse, channelResponse, statusResponse] = await Promise.all([
+      const [buddyResponse, channelResponse, statusResponse, settingsResponse] = await Promise.all([
         getChatUsersService({ excludeSelf: true }),
         getChatConversationsService(),
         getChatStatusService().catch(() => null),
+        getChatSettingsService().catch(() => null),
       ]);
+
+      const persistedSettings = settingsResponse?.data?.data || settingsResponse?.data || {};
+      if (typeof persistedSettings.enterToSend === "boolean") {
+        setEnterToSend(persistedSettings.enterToSend);
+      }
+      if (persistedSettings.themeMode === "dark" || persistedSettings.themeMode === "light") {
+        setMode(persistedSettings.themeMode);
+      }
+      if (Array.isArray(persistedSettings.mutedChatIds)) {
+        setMutedChatIds(persistedSettings.mutedChatIds.map(String));
+      }
+      if (Array.isArray(persistedSettings.blockedUserIds)) {
+        setBlockedUserIds(persistedSettings.blockedUserIds.map(String));
+      }
 
       const chatUsers = getArrayPayload(buddyResponse.data?.data);
       const chatConversations = getArrayPayload(channelResponse.data?.data);
@@ -1300,76 +1386,8 @@ export default function ChatSystem({ standalone = false }) {
       const otherConversations = chatConversations.filter(
         (conversation) => !isSelfConversation(conversation),
       );
-      const readKeys = readConversationKeysRef.current;
-        const shouldKeepRead = (conversation) => {
-        const conversationIds = [
-          conversation?.chat_id,
-          conversation?.chatId,
-          conversation?.id,
-          getChannelId(conversation),
-        ]
-          .map((value) => String(value || ""))
-          .filter(Boolean);
-        const participants = Array.isArray(conversation?.participants)
-          ? conversation.participants
-          : [];
-        const conversationUserId = String(
-          conversation?.user_id ||
-            conversation?.userId ||
-            conversation?.peer_id ||
-            conversation?.peerId ||
-            conversation?.other_user_id ||
-            conversation?.otherUserId ||
-            "",
-        );
-        const conversationEmail = String(
-          conversation?.email ||
-            conversation?.email_id ||
-            conversation?.user_email ||
-            conversation?.userEmail ||
-            "",
-        ).toLowerCase();
-
-        return (
-          conversationIds.some((value) => readKeys.has(`chat:${value}`)) ||
-          (conversationUserId && readKeys.has(`user:${conversationUserId}`)) ||
-          (conversationEmail && readKeys.has(`email:${conversationEmail}`)) ||
-          participants.some((participant) => {
-            const participantId = String(getBuddySendId(participant) || "");
-            const participantEmail = String(getBuddyEmail(participant) || "").toLowerCase();
-
-            return (
-              (participantId && readKeys.has(`user:${participantId}`)) ||
-              (participantEmail && readKeys.has(`email:${participantEmail}`))
-            );
-          })
-        );
-      };
-      const nextChatConversations = chatConversations.map((conversation) =>
-        shouldKeepRead(conversation)
-          ? {
-              ...conversation,
-              unreadCount: 0,
-              unread_count: 0,
-              unread: 0,
-              unreadMessages: 0,
-            }
-          : conversation,
-      );
-      const nextChatUsers = chatUsers.map((user) => {
-        const userId = String(getBuddySendId(user) || "");
-        const userEmail = String(getBuddyEmail(user) || "").toLowerCase();
-        const shouldKeepUserRead =
-          (userId && readKeys.has(`user:${userId}`)) ||
-          (userEmail && readKeys.has(`email:${userEmail}`));
-
-        return shouldKeepUserRead
-          ? { ...user, unreadCount: 0, unread_count: 0, unread: 0, unreadMessages: 0 }
-          : user;
-      });
-
-      setBuddies(nextChatUsers);
-      setChannels(nextChatConversations);
+      setBuddies(chatUsers);
+      setChannels(chatConversations);
       setCurrentStatus(
         statusResponse?.data?.data?.user?.presence ||
           statusResponse?.data?.data?.user?.status ||
@@ -1455,7 +1473,7 @@ export default function ChatSystem({ standalone = false }) {
     } finally {
       setLoading(false);
     }
-  }, [currentUserId, id, isCurrentUserRecord, isSelfConversation, selectedChat]);
+  }, [currentUserId, id, isCurrentUserRecord, isSelfConversation, selectedChat, setMode]);
 
   useEffect(() => {
     if (initialFetchStartedRef.current) return;
@@ -1630,17 +1648,17 @@ export default function ChatSystem({ standalone = false }) {
   };
 
   const groupMembers = useMemo(
-    () => visibleBuddies.filter((buddy) => {
+    () => allVisibleBuddies.filter((buddy) => {
       const search = groupSearch.trim().toLowerCase();
       if (!search) return true;
       return `${getBuddyName(buddy)} ${getBuddyEmail(buddy)}`.toLowerCase().includes(search);
     }),
-    [groupSearch, visibleBuddies],
+    [allVisibleBuddies, groupSearch],
   );
 
   const selectedGroupMembers = useMemo(
-    () => visibleBuddies.filter((buddy) => groupUserIds.includes(String(getBuddySendId(buddy)))),
-    [groupUserIds, visibleBuddies],
+    () => allVisibleBuddies.filter((buddy) => groupUserIds.includes(String(getBuddySendId(buddy)))),
+    [allVisibleBuddies, groupUserIds],
   );
 
   const selectedGroupParticipantIds = useMemo(() => {
@@ -1657,10 +1675,10 @@ export default function ChatSystem({ standalone = false }) {
 
   const addableGroupMembers = useMemo(
     () =>
-      visibleBuddies.filter(
+      allVisibleBuddies.filter(
         (buddy) => !selectedGroupParticipantIds.has(String(getBuddySendId(buddy))),
       ),
-    [selectedGroupParticipantIds, visibleBuddies],
+    [allVisibleBuddies, selectedGroupParticipantIds],
   );
   const selectedMentionableUsers = useMemo(() => {
     if (!selectedChat) return [];
@@ -1741,7 +1759,9 @@ export default function ChatSystem({ standalone = false }) {
         ? prev.filter((id) => id !== normalizedChatId)
         : [...prev, normalizedChatId];
 
-      localStorage.setItem("chat_muted_chat_ids", JSON.stringify(next));
+      updateChatSettingsService({ mutedChatIds: next }).catch(() => {
+        setSendError("Chat notification setting could not be saved.");
+      });
       return next;
     });
   };
@@ -1831,7 +1851,7 @@ export default function ChatSystem({ standalone = false }) {
       });
       setMutedChatIds((prev) => {
         const next = prev.filter((id) => id !== String(chatId));
-        localStorage.setItem("chat_muted_chat_ids", JSON.stringify(next));
+        updateChatSettingsService({ mutedChatIds: next }).catch(() => {});
         return next;
       });
       setSelectedChat(null);
@@ -1846,6 +1866,18 @@ export default function ChatSystem({ standalone = false }) {
 
     try {
       await transferGroupOwnershipService(chatId, userId);
+      await fetchChatData();
+      setSendError("");
+    } catch (error) {
+      setSendError(normalizeChatError(error));
+      throw error;
+    }
+  };
+
+  const handleRemoveGroupMember = async (chatId, userId) => {
+    if (!chatId || !userId) return;
+    try {
+      await removeGroupMemberService(chatId, userId);
       await fetchChatData();
       setSendError("");
     } catch (error) {
@@ -1968,7 +2000,7 @@ export default function ChatSystem({ standalone = false }) {
     setIncomingCall(null);
     // Reload the app at the public route so no mounted chat effects can
     // continue using the previous authenticated session.
-    window.location.replace("http://127.0.0.1:5174/login");
+    window.location.replace("/login");
   };
 
   const handleStartConversationCall = async (type, options = {}) => {
@@ -2104,10 +2136,7 @@ export default function ChatSystem({ standalone = false }) {
       .filter((buddy) => {
         const name = getBuddyName(buddy);
         const email = getBuddyEmail(buddy);
-        return (
-          text.includes(`@${name}`) ||
-          (email && text.includes(`@${email}`))
-        );
+        return textContainsMention(text, name) || textContainsMention(text, email);
       })
       .map((buddy) => ({
         userId: String(getBuddySendId(buddy)),
@@ -2193,7 +2222,9 @@ export default function ChatSystem({ standalone = false }) {
 
   const handleEnterToSendChange = (enabled) => {
     setEnterToSend(enabled);
-    localStorage.setItem("chat-enter-to-send", String(enabled));
+    updateChatSettingsService({ enterToSend: enabled }).catch(() => {
+      setSendError("Enter-to-send setting could not be saved.");
+    });
   };
 
   const handleReaction = async (messageId, emoji) => {
@@ -2365,7 +2396,9 @@ export default function ChatSystem({ standalone = false }) {
         const next = isBlocked
           ? prev.filter((id) => id !== String(userId))
           : [...prev, String(userId)];
-        localStorage.setItem("chat_blocked_user_ids", JSON.stringify(next));
+        updateChatSettingsService({ blockedUserIds: next }).catch(() => {
+          setSendError("Blocked-user setting could not be saved.");
+        });
         return next;
       });
       if (!isBlocked) {
@@ -2504,6 +2537,7 @@ export default function ChatSystem({ standalone = false }) {
         onEndActiveCall={handleEndActiveCall}
         onLeaveGroup={handleLeaveGroup}
         onTransferOwnership={handleTransferOwnership}
+        onRemoveGroupMember={handleRemoveGroupMember}
         inputValue={inputValue}
         mutedGroupIds={mutedChatIds}
         mentionableUsers={selectedMentionableUsers}

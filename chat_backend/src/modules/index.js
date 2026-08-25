@@ -1,4 +1,9 @@
 import ChatUser from "./chatUser.module.js";
+import ChatUserSettings from "./chatUserSettings.module.js";
+import ChatBlockedUser from "./chatBlockedUser.module.js";
+import ChatMutedConversation from "./chatMutedConversation.module.js";
+import ChatMarket from "./chatMarket.module.js";
+import ChatUserPresence from "./chatUserPresence.module.js";
 import ChatRole from "./chatRole.module.js";
 import ChatUserRole from "./chatUserRole.module.js";
 import ChatIdentity from "./chatIdentity.module.js";
@@ -18,6 +23,43 @@ ChatUser.belongsToMany(ChatRole, {
   foreignKey: "userId",
   otherKey: "roleId",
   as: "roles",
+});
+ChatUser.hasOne(ChatUserSettings, {
+  foreignKey: "userId",
+  as: "settings",
+  onDelete: "CASCADE",
+});
+ChatUser.belongsTo(ChatUser, { foreignKey: "managerUserId", as: "manager" });
+ChatUser.hasMany(ChatUser, { foreignKey: "managerUserId", as: "reports" });
+ChatUser.belongsTo(ChatMarket, { foreignKey: "marketId", as: "marketRelation" });
+ChatMarket.hasMany(ChatUser, { foreignKey: "marketId", as: "users" });
+ChatUser.hasMany(ChatUserPresence, {
+  foreignKey: "userId",
+  as: "presenceSessions",
+  onDelete: "CASCADE",
+});
+ChatUserPresence.belongsTo(ChatUser, { foreignKey: "userId", as: "user" });
+ChatUserSettings.belongsTo(ChatUser, {
+  foreignKey: "userId",
+  as: "user",
+});
+ChatUser.hasMany(ChatBlockedUser, {
+  foreignKey: "userId",
+  as: "blockedUsers",
+  onDelete: "CASCADE",
+});
+ChatBlockedUser.belongsTo(ChatUser, {
+  foreignKey: "userId",
+  as: "user",
+});
+ChatUser.hasMany(ChatMutedConversation, {
+  foreignKey: "userId",
+  as: "mutedConversations",
+  onDelete: "CASCADE",
+});
+ChatMutedConversation.belongsTo(ChatUser, {
+  foreignKey: "userId",
+  as: "user",
 });
 ChatRole.belongsToMany(ChatUser, {
   through: ChatUserRole,
@@ -112,6 +154,11 @@ ChatCall.belongsTo(ChatConversation, {
 const db = {
   sequelize,
   chatUsers: ChatUser,
+  chatUserSettings: ChatUserSettings,
+  chatBlockedUsers: ChatBlockedUser,
+  chatMutedConversations: ChatMutedConversation,
+  chatMarkets: ChatMarket,
+  chatUserPresence: ChatUserPresence,
   chatRoles: ChatRole,
   chatUserRoles: ChatUserRole,
   chatIdentities: ChatIdentity,
@@ -180,6 +227,101 @@ const addIndexIfMissing = async (queryInterface, tableName, fields, name) => {
   }
 };
 
+const addForeignKeyIfMissing = async (tableName, columnName, referenceTable, referenceColumn, name, onDelete = "SET NULL") => {
+  const [rows] = await sequelize.query(
+    `SELECT CONSTRAINT_NAME FROM information_schema.KEY_COLUMN_USAGE
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = :tableName
+       AND COLUMN_NAME = :columnName AND REFERENCED_TABLE_NAME = :referenceTable`,
+    { replacements: { tableName, columnName, referenceTable } },
+  );
+  if (!rows.length) {
+    await sequelize.getQueryInterface().addConstraint(tableName, {
+      fields: [columnName],
+      type: "foreign key",
+      name,
+      references: { table: referenceTable, field: referenceColumn },
+      onUpdate: "CASCADE",
+      onDelete,
+    });
+  }
+};
+
+const repairMessageRelationIndexes = async () => {
+  const queryInterface = sequelize.getQueryInterface();
+  const indexes = await queryInterface.showIndex("chat_message_reactions");
+  const expected = [
+    {
+      name: "chat_message_reactions_message_id_chat_identity_id_emoji",
+      fields: ["messageId", "chatIdentityId", "emoji"],
+      unique: true,
+    },
+    {
+      name: "chat_message_reactions_chat_identity_id_message_id",
+      fields: ["chatIdentityId", "messageId"],
+    },
+    {
+      name: "chat_reactions_identity_message",
+      fields: ["chatIdentityId", "messageId"],
+    },
+  ];
+  for (const definition of expected) {
+    const existing = indexes.find((index) => index.name === definition.name);
+    const existingFields = existing?.fields?.map((field) => field.attribute || field.name) || [];
+    if (existing && existingFields.join(",") !== definition.fields.join(",")) {
+      await queryInterface.removeIndex("chat_message_reactions", definition.name);
+    }
+    const refreshed = await queryInterface.showIndex("chat_message_reactions");
+    if (!refreshed.some((index) => index.name === definition.name)) {
+      await queryInterface.addIndex("chat_message_reactions", definition.fields, {
+        name: definition.name,
+        unique: definition.unique || false,
+      });
+    }
+  }
+  await addForeignKeyIfMissing(
+    "chat_message_reactions",
+    "messageId",
+    "chat_messages",
+    "id",
+    "chat_message_reactions_message_fk",
+    "CASCADE",
+  );
+};
+
+const migrateMessageIdsToUuid = async () => {
+  const queryInterface = sequelize.getQueryInterface();
+  const tables = await queryInterface.showAllTables();
+  if (!tables.some((table) => String(table).toLowerCase() === "chat_messages")) return;
+
+  const messageColumns = await queryInterface.describeTable("chat_messages");
+  if (String(messageColumns.id?.type || "").toLowerCase().includes("char")) return;
+
+  try {
+    await sequelize.query("SET FOREIGN_KEY_CHECKS = 0");
+    await sequelize.query("ALTER TABLE `chat_messages` ADD COLUMN `uuidId` CHAR(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NULL");
+    await sequelize.query("UPDATE `chat_messages` SET `uuidId` = UUID() WHERE `uuidId` IS NULL");
+    await sequelize.query("ALTER TABLE `chat_messages` MODIFY COLUMN `uuidId` CHAR(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL");
+
+    const reactionColumns = await queryInterface.describeTable("chat_message_reactions");
+    if (reactionColumns.messageId) {
+      await sequelize.query("ALTER TABLE `chat_message_reactions` DROP FOREIGN KEY `chat_message_reactions_ibfk_1`").catch(() => {});
+      await sequelize.query("ALTER TABLE `chat_message_reactions` ADD COLUMN `uuidMessageId` CHAR(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NULL");
+      await sequelize.query("UPDATE `chat_message_reactions` r JOIN `chat_messages` m ON r.`messageId` = m.`id` SET r.`uuidMessageId` = m.`uuidId`");
+      await sequelize.query("ALTER TABLE `chat_message_reactions` MODIFY COLUMN `uuidMessageId` CHAR(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL");
+      await sequelize.query("ALTER TABLE `chat_message_reactions` DROP COLUMN `messageId`, CHANGE COLUMN `uuidMessageId` `messageId` CHAR(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL");
+    }
+
+    await sequelize.query("ALTER TABLE `chat_messages` ADD COLUMN `uuidReplyToMessageId` CHAR(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NULL");
+    await sequelize.query("UPDATE `chat_messages` r JOIN `chat_messages` m ON r.`replyToMessageId` = m.`id` SET r.`uuidReplyToMessageId` = m.`uuidId`");
+    await sequelize.query("ALTER TABLE `chat_messages` DROP COLUMN `replyToMessageId`, CHANGE COLUMN `uuidReplyToMessageId` `replyToMessageId` CHAR(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NULL");
+    await sequelize.query("ALTER TABLE `chat_messages` DROP PRIMARY KEY, CHANGE COLUMN `id` `legacyId` INT NOT NULL, CHANGE COLUMN `uuidId` `id` CHAR(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL, ADD PRIMARY KEY (`id`)");
+    await sequelize.query("ALTER TABLE `chat_messages` DROP COLUMN `legacyId`");
+    await addForeignKeyIfMissing("chat_message_reactions", "messageId", "chat_messages", "id", "chat_message_reactions_message_fk", "CASCADE");
+  } finally {
+    await sequelize.query("SET FOREIGN_KEY_CHECKS = 1");
+  }
+};
+
 const ensureSchemaCompatibility = async () => {
   const queryInterface = sequelize.getQueryInterface();
 
@@ -243,10 +385,119 @@ const ensureSchemaCompatibility = async () => {
     type: DataTypes.STRING,
     allowNull: false,
   });
-  await addColumnIfMissing(queryInterface, "chat_users", "metadata", {
-    type: DataTypes.JSON,
+  await addColumnIfMissing(queryInterface, "chat_users", "designation", {
+    type: DataTypes.STRING,
     allowNull: true,
   });
+  await addColumnIfMissing(queryInterface, "chat_users", "managerUserId", {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+  });
+  await addColumnIfMissing(queryInterface, "chat_users", "marketId", {
+    type: DataTypes.UUID,
+    allowNull: true,
+  });
+  await addIndexIfMissing(queryInterface, "chat_users", ["managerUserId"], "chat_users_manager_user");
+  await addIndexIfMissing(queryInterface, "chat_users", ["marketId"], "chat_users_market");
+  await addForeignKeyIfMissing("chat_users", "managerUserId", "chat_users", "id", "chat_users_manager_fk");
+  await addForeignKeyIfMissing("chat_users", "marketId", "chat_markets", "id", "chat_users_market_fk");
+
+  // Backfill normalized profile relations from the old display fields before
+  // removing those legacy columns.
+  const userColumns = await queryInterface.describeTable("chat_users");
+  const legacyProfileColumnsExist = userColumns.managerName || userColumns.market;
+  const [legacyUsers] = legacyProfileColumnsExist
+    ? await sequelize.query("SELECT id, displayName, username, email, managerName, managerUserId, market, marketId FROM chat_users")
+    : [[]];
+  const usersWithProfileRelations = legacyUsers;
+  const usersByName = new Map();
+  for (const candidate of usersWithProfileRelations) {
+    for (const value of [candidate.displayName, candidate.username, candidate.email]) {
+      if (value) usersByName.set(String(value).trim().toLowerCase(), candidate);
+    }
+  }
+  for (const user of usersWithProfileRelations) {
+    const updates = {};
+    if (!user.managerUserId && user.managerName) {
+      const manager = usersByName.get(String(user.managerName).trim().toLowerCase());
+      if (manager && manager.id !== user.id) updates.managerUserId = manager.id;
+    }
+    if (!user.marketId && user.market) {
+      const [market] = await ChatMarket.findOrCreate({
+        where: { name: String(user.market).trim() },
+        defaults: { name: String(user.market).trim() },
+      });
+      updates.marketId = market.id;
+    }
+    if (Object.keys(updates).length) await ChatUser.update(updates, { where: { id: user.id } });
+  }
+
+  const [legacyPresenceUsers] = userColumns.presence || userColumns.lastSeenAt
+    ? await sequelize.query("SELECT id, presence, lastSeenAt FROM chat_users")
+    : [[]];
+  const usersWithPresence = legacyPresenceUsers.length
+    ? legacyPresenceUsers
+    : await ChatUser.findAll({ attributes: ["id"] });
+  for (const user of usersWithPresence) {
+    await ChatUserPresence.findOrCreate({
+      where: { userId: user.id, sessionId: "primary" },
+      defaults: {
+        userId: user.id,
+        sessionId: "primary",
+        presence: user.presence || "offline",
+        lastSeenAt: user.lastSeenAt || null,
+        connectedAt: user.presence === "online" ? user.lastSeenAt : null,
+        disconnectedAt: user.presence === "online" ? null : user.lastSeenAt,
+      },
+    });
+  }
+  await removeColumnIfPresent(queryInterface, "chat_users", "managerName");
+  await removeColumnIfPresent(queryInterface, "chat_users", "market");
+  await removeColumnIfPresent(queryInterface, "chat_users", "presence");
+  await removeColumnIfPresent(queryInterface, "chat_users", "lastSeenAt");
+  await removeColumnIfPresent(queryInterface, "chat_users", "metadata");
+  const settingsTable = await queryInterface.describeTable("chat_user_settings");
+  if (settingsTable.id && !String(settingsTable.id.type).toLowerCase().includes("char")) {
+    const settingsRowCount = await ChatUserSettings.count();
+    if (settingsRowCount === 0) {
+      await sequelize.query(
+        "ALTER TABLE `chat_user_settings` MODIFY COLUMN `id` CHAR(36) NOT NULL",
+      );
+    }
+  }
+  const settingsColumns = await queryInterface.describeTable("chat_user_settings");
+  if (settingsColumns.mutedChatIds || settingsColumns.blockedUserIds) {
+    const [legacyRows] = await sequelize.query(
+      "SELECT `userId`, `mutedChatIds`, `blockedUserIds` FROM `chat_user_settings`",
+    );
+    for (const row of legacyRows) {
+      const parseIds = (value) => {
+        if (Array.isArray(value)) return value;
+        try {
+          const parsed = typeof value === "string" ? JSON.parse(value) : value;
+          return Array.isArray(parsed) ? parsed : [];
+        } catch {
+          return [];
+        }
+      };
+      const mutedChatIds = [...new Set(parseIds(row.mutedChatIds).map(String).filter(Boolean))];
+      const blockedUserIds = [...new Set(parseIds(row.blockedUserIds).map(String).filter(Boolean))];
+      if (mutedChatIds.length > 0) {
+        await ChatMutedConversation.bulkCreate(
+          mutedChatIds.map((conversationId) => ({ userId: row.userId, conversationId })),
+          { ignoreDuplicates: true },
+        );
+      }
+      if (blockedUserIds.length > 0) {
+        await ChatBlockedUser.bulkCreate(
+          blockedUserIds.map((blockedUserId) => ({ userId: row.userId, blockedUserId })),
+          { ignoreDuplicates: true },
+        );
+      }
+    }
+  }
+  await removeColumnIfPresent(queryInterface, "chat_user_settings", "mutedChatIds");
+  await removeColumnIfPresent(queryInterface, "chat_user_settings", "blockedUserIds");
   await changeColumnIfPresent(queryInterface, "chat_users", "avatarUrl", {
     type: DataTypes.TEXT,
     allowNull: true,
@@ -276,8 +527,10 @@ const ensureSchemaCompatibility = async () => {
 };
 
 export const syncModels = async () => {
+  await migrateMessageIdsToUuid();
   await sequelize.sync();
   await ensureSchemaCompatibility();
+  await repairMessageRelationIndexes();
   await seedRoles();
 };
 

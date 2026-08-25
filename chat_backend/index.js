@@ -11,6 +11,7 @@ validateRuntimeConfig();
 
 const app = createApp();
 const PORT = runtimeConfig.port;
+const HOST = process.env.HOST || "0.0.0.0";
 let server;
 let isShuttingDown = false;
 
@@ -34,9 +35,9 @@ const start = async () => {
       : http.createServer(app);
     initChatSocket(httpServer, allowedOrigins);
 
-    server = httpServer.listen(PORT, "127.0.0.1", () => {
+    server = httpServer.listen(PORT, HOST, () => {
       console.log(
-        `Chat backend running on ${httpsKeyPath && httpsCertPath ? "https" : "http"}://localhost:${PORT}`,
+        `Chat backend running on ${httpsKeyPath && httpsCertPath ? "https" : "http"}://${HOST}:${PORT}`,
       );
     });
 

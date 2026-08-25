@@ -200,7 +200,12 @@ function LoginPage() {
             fullWidth
             required
             margin="normal"
-            sx={{ "& .MuiOutlinedInput-root": { borderRadius: 3, bgcolor: "#faf9ff" }, "& input:-webkit-autofill": { WebkitBoxShadow: "0 0 0 100px #faf9ff inset", WebkitTextFillColor: "#292640" } }}
+            sx={{
+              "& .MuiOutlinedInput-root": { borderRadius: 3, bgcolor: "#faf9ff" },
+              "& .MuiInputBase-input": { color: "#292640", WebkitTextFillColor: "#292640" },
+              "& .MuiInputLabel-root": { color: "#77748a" },
+              "& input:-webkit-autofill": { WebkitBoxShadow: "0 0 0 100px #faf9ff inset", WebkitTextFillColor: "#292640" },
+            }}
           />
           <TextField
             label="Password"
@@ -223,7 +228,12 @@ function LoginPage() {
                 </InputAdornment>
               ),
             }}
-            sx={{ "& .MuiOutlinedInput-root": { borderRadius: 3, bgcolor: "#faf9ff" }, "& input:-webkit-autofill": { WebkitBoxShadow: "0 0 0 100px #faf9ff inset", WebkitTextFillColor: "#292640" } }}
+            sx={{
+              "& .MuiOutlinedInput-root": { borderRadius: 3, bgcolor: "#faf9ff" },
+              "& .MuiInputBase-input": { color: "#292640", WebkitTextFillColor: "#292640" },
+              "& .MuiInputLabel-root": { color: "#77748a" },
+              "& input:-webkit-autofill": { WebkitBoxShadow: "0 0 0 100px #faf9ff inset", WebkitTextFillColor: "#292640" },
+            }}
           />
           <Button type="submit" variant="contained" fullWidth endIcon={!submitting && <LoginIcon />} startIcon={submitting && <CircularProgress color="inherit" size={18} />} disabled={submitting} sx={{ mt: 3, minHeight: 52, borderRadius: 3, textTransform: "none", fontWeight: 800, fontSize: 15, bgcolor: "#6f2da8", boxShadow: "none", "&:hover": { bgcolor: "#5d238f", boxShadow: "none" } }}>
             {submitting ? "Signing in" : "Sign in"}

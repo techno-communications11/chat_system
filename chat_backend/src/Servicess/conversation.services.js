@@ -2,16 +2,21 @@ import crypto from "crypto";
 import ChatIdentity from "../modules/chatIdentity.module.js";
 import ChatConversation from "../modules/chatConversation.module.js";
 import ChatConversationParticipant from "../modules/chatConversationParticipant.module.js";
+import ChatMessage from "../modules/chatMessage.module.js";
 import ChatGroup from "../modules/chatGroup.module.js";
 import ChatChannel from "../modules/chatChannel.module.js";
 import { writeChatAuditLog } from "./chatAudit.services.js";
-import { notifyConversationRead } from "../realtime/chatSocket.js";
+import { notifyConversationMemberRemoved, notifyConversationRead } from "../realtime/chatSocket.js";
 import {
   provider,
   toConversation,
   toChannel,
   toGroup,
+  toUser,
+  toMessage,
+  getMessageWithReactions,
   assertString,
+  assertArray,
   ensureLocalIdentity,
   findOrCreateUserIdentity,
   getConversationForMember,
@@ -212,6 +217,30 @@ export const removeGroupConversationMember = async ({
       chatIdentityId: targetIdentity.id,
     },
   });
+
+  if (removed > 0) {
+    const removedName =
+      targetIdentity.providerDisplayName ||
+      targetIdentity.appUserEmail ||
+      String(userId);
+    const systemMessageRecord = await ChatMessage.create({
+      conversationId: conversation.id,
+      senderIdentityId: identity.id,
+      text: `${removedName} was removed from the group`,
+      metadata: { kind: "group_member_removed", removedUserId: String(userId) },
+    });
+    const systemMessage = toMessage(
+      await getMessageWithReactions(systemMessageRecord.id),
+    );
+
+    await notifyConversationMemberRemoved({
+      appName: actor.appName,
+      conversationId: conversation.id,
+      removedUser: toUser(targetIdentity),
+      removedBy: { id: String(actor.appUserId) },
+      systemMessage,
+    });
+  }
 
   await writeChatAuditLog({
     appName: actor.appName,

@@ -373,13 +373,18 @@ const toUser = (identity, chatUser = null) => {
     username: chatUser?.username || metadata.username || null,
     name,
     displayName: name,
+    designation: chatUser?.designation || metadata.designation || null,
+    managerUserId: chatUser?.managerUserId || chatUser?.manager_user_id || null,
+    managerName: chatUser?.manager?.displayName || chatUser?.managerName || chatUser?.manager_name || metadata.managerName || metadata.manager_name || null,
+    marketId: chatUser?.marketId || chatUser?.market_id || null,
+    market: chatUser?.marketRelation?.name || chatUser?.market || chatUser?.marketName || chatUser?.market_name || metadata.market || metadata.marketName || null,
     avatarUrl,
     status: presence || chatUser?.status || null,
     presence: presence || chatUser?.presence || null,
     lastSeenAt: chatUser?.lastSeenAt || null,
     role: chatUser?.role || null,
     roles: Array.isArray(chatUser?.roles) ? chatUser.roles : [],
-    metadata: chatUser?.metadata || metadata,
+    metadata,
   };
 
   return {
@@ -390,6 +395,11 @@ const toUser = (identity, chatUser = null) => {
     email_id: identity.appUserEmail,
     name,
     display_name: name,
+    designation: chatUser?.designation || metadata.designation || null,
+    managerUserId: chatUser?.managerUserId || chatUser?.manager_user_id || null,
+    managerName: chatUser?.manager?.displayName || chatUser?.managerName || chatUser?.manager_name || metadata.managerName || metadata.manager_name || null,
+    marketId: chatUser?.marketId || chatUser?.market_id || null,
+    market: chatUser?.marketRelation?.name || chatUser?.market || chatUser?.marketName || chatUser?.market_name || metadata.market || metadata.marketName || null,
     avatarUrl,
     imageUrl: avatarUrl,
     provider,
@@ -526,9 +536,10 @@ const toConversation = async (conversation, currentIdentityId) => {
       otherParticipant?.identity?.appUserEmail ||
       otherParticipant?.identity?.appUserId ||
       "Chat",
-    participants: participants.map((participant) =>
-      toUser(participant.identity),
-    ),
+    participants: participants.map((participant) => ({
+      ...toUser(participant.identity),
+      conversationRole: participant.role,
+    })),
     participantCount: participants.length,
     unreadCount,
     lastMessage: visibleLastMessage ? toMessage(visibleLastMessage) : null,

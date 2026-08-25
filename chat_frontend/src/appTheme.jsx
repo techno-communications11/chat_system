@@ -3,11 +3,7 @@ import { CssBaseline } from "@mui/material";
 import { createTheme, ThemeProvider } from "@mui/material/styles";
 import { ThemeModeContext } from "./themeMode";
 
-const THEME_STORAGE_KEY = "chat-theme-mode";
-
 const getInitialMode = () => {
-  const storedMode = window.localStorage.getItem(THEME_STORAGE_KEY);
-  if (storedMode === "dark" || storedMode === "light") return storedMode;
   return window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 };
 
@@ -89,7 +85,6 @@ export function AppThemeProvider({ children }) {
   );
 
   useEffect(() => {
-    window.localStorage.setItem(THEME_STORAGE_KEY, mode);
     document.documentElement.dataset.chatTheme = mode;
   }, [mode]);
 

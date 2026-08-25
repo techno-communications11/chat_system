@@ -2,6 +2,7 @@ import {
   editChatMessage,
   deleteChatMessage,
   getChatMessages,
+  getChatMessageInfo,
   pinChatMessage,
   searchChatMessages,
   sendBroadcastMessage,
@@ -9,6 +10,18 @@ import {
   sendDirectChatMessage,
   sendMultiUserMessage,
 } from "../Servicess/message.services.js";
+
+export const getConversationMessageInfo = handleRequest(async (req, res) =>
+  sendSuccess(
+    res,
+    "Message info fetched",
+    await getChatMessageInfo({
+      actor: actorFrom(req),
+      chatId: req.params.chatId,
+      messageId: req.params.messageId,
+    }),
+  ),
+);
 import { sendChatFile } from "../Servicess/file.services.js";
 import {
   addChatReaction,

@@ -8,6 +8,7 @@ import {
   DialogContent,
   DialogTitle,
   Divider,
+  IconButton,
   List,
   ListItemButton,
   ListItemText,
@@ -22,6 +23,7 @@ import NotificationsOffIcon from "@mui/icons-material/NotificationsOff";
 import AttachFileIcon from "@mui/icons-material/AttachFile";
 import DeleteSweepIcon from "@mui/icons-material/DeleteSweep";
 import SwapHorizIcon from "@mui/icons-material/SwapHoriz";
+import PersonRemoveIcon from "@mui/icons-material/PersonRemove";
 import {
   getBuddyEmail,
   getBuddyName,
@@ -45,15 +47,18 @@ export default function GroupActions({
   onCloseMenu,
   onLeaveGroup,
   onTransferOwnership,
+  onRemoveMember,
   onOpenInfo,
   onOpenMedia,
   onClearChat,
   onOpenLeaveConfirm,
+  isGroupAdmin = false,
   onToggleMute,
   open,
   selectedChat,
 }) {
   const [transferOpen, setTransferOpen] = useState(false);
+  const [removeMember, setRemoveMember] = useState(null);
   if (selectedChat?.type !== "channel") return null;
 
   return (
@@ -114,16 +119,18 @@ export default function GroupActions({
             <DeleteSweepIcon sx={{ fontSize: 18, color: "error.main" }} />
             <ListItemText primary="Clear chat" primaryTypographyProps={{ fontSize: 13.5, fontWeight: 600, color: "error.main" }} />
           </ListItemButton>
-          <ListItemButton
-            onClick={() => {
-              onCloseMenu?.();
-              setTransferOpen(true);
-            }}
-            sx={{ gap: 1.25, py: 1 }}
-          >
-            <SwapHorizIcon sx={{ fontSize: 18, color: "text.secondary" }} />
-            <ListItemText primary="Transfer ownership" primaryTypographyProps={{ fontSize: 13.5, fontWeight: 600 }} />
-          </ListItemButton>
+          {isGroupAdmin && (
+            <ListItemButton
+              onClick={() => {
+                onCloseMenu?.();
+                setTransferOpen(true);
+              }}
+              sx={{ gap: 1.25, py: 1 }}
+            >
+              <SwapHorizIcon sx={{ fontSize: 18, color: "text.secondary" }} />
+              <ListItemText primary="Transfer ownership" primaryTypographyProps={{ fontSize: 13.5, fontWeight: 600 }} />
+            </ListItemButton>
+          )}
           <Divider />
           <ListItemButton
             onClick={() => {
@@ -189,7 +196,7 @@ export default function GroupActions({
               const isCurrentMember = isSamePerson(member, currentUser);
 
               return (
-                <ListItemButton key={memberId || getBuddyName(member)} disabled>
+                <ListItemButton key={memberId || getBuddyName(member)}>
                   <Avatar
                     src={getImageUrl(member)}
                     sx={{
@@ -209,6 +216,19 @@ export default function GroupActions({
                     primaryTypographyProps={{ fontSize: 13.5, fontWeight: 700 }}
                     secondaryTypographyProps={{ fontSize: 12, noWrap: true }}
                   />
+                  {isGroupAdmin && !isCurrentMember && (
+                    <IconButton
+                      size="small"
+                      color="error"
+                      aria-label={`Remove ${getBuddyName(member)} from group`}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setRemoveMember(member);
+                      }}
+                    >
+                      <PersonRemoveIcon sx={{ fontSize: 19 }} />
+                    </IconButton>
+                  )}
                 </ListItemButton>
               );
             })}
@@ -219,7 +239,36 @@ export default function GroupActions({
         </DialogActions>
       </Dialog>
 
-      <Dialog open={transferOpen} onClose={() => setTransferOpen(false)} fullWidth maxWidth="xs">
+      <Dialog open={Boolean(removeMember)} onClose={() => setRemoveMember(null)} fullWidth maxWidth="xs">
+        <DialogTitle>Remove group member?</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary">
+            Remove {removeMember ? getBuddyName(removeMember) : "this member"} from {selectedChat.title}?
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setRemoveMember(null)}>Cancel</Button>
+          <Button
+            color="error"
+            variant="contained"
+            onClick={async () => {
+              if (!removeMember) return;
+              const memberId = getBuddySendId(removeMember) || getBuddyEmail(removeMember);
+              try {
+                await onRemoveMember?.(selectedChat.id, memberId);
+                setRemoveMember(null);
+                onCloseInfo?.();
+              } catch {
+                // The parent displays the request error.
+              }
+            }}
+          >
+            Remove
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={isGroupAdmin && transferOpen} onClose={() => setTransferOpen(false)} fullWidth maxWidth="xs">
         <DialogTitle>Transfer ownership</DialogTitle>
         <DialogContent dividers>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 1.25 }}>

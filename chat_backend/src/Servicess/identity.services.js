@@ -1,5 +1,6 @@
 import { Op } from "sequelize";
 import ChatIdentity from "../modules/chatIdentity.module.js";
+import ChatUserPresence from "../modules/chatUserPresence.module.js";
 import { writeChatAuditLog } from "./chatAudit.services.js";
 import {
   getChatDirectoryUserById,
@@ -89,6 +90,17 @@ export const updateChatPresence = async ({ actor, presence }) => {
       status: normalizedPresence,
     },
   });
+  if (actor.appUserId) {
+    const now = new Date();
+    await ChatUserPresence.upsert({
+      userId: Number(actor.appUserId),
+      sessionId: "primary",
+      presence: normalizedPresence,
+      lastSeenAt: now,
+      connectedAt: normalizedPresence === "online" ? now : null,
+      disconnectedAt: normalizedPresence === "offline" ? now : null,
+    });
+  }
 
   await writeChatAuditLog({
     appName: actor.appName,

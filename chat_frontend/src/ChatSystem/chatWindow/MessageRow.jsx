@@ -2,6 +2,12 @@ import { useRef, useState } from "react";
 import {
   Avatar,
   Box,
+  Button,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  Divider,
   Link,
   Popover,
   Stack,
@@ -15,9 +21,14 @@ import InsertDriveFileIcon from "@mui/icons-material/InsertDriveFile";
 import PushPinIcon from "@mui/icons-material/PushPin";
 import VideoCallIcon from "@mui/icons-material/VideoCall";
 import DownloadIcon from "@mui/icons-material/Download";
+import CloseIcon from "@mui/icons-material/Close";
+import DoneAllRoundedIcon from "@mui/icons-material/DoneAllRounded";
+import DoneRoundedIcon from "@mui/icons-material/DoneRounded";
+import VisibilityOutlinedIcon from "@mui/icons-material/VisibilityOutlined";
 import MessageActions from "./MessageActions";
 import { getBuddyName, getImageUrl } from "../chatHelpers";
 import { REACTION_OPTIONS } from "../../utils/constants";
+import { getChatMessageInfoService } from "../../Services/chat.services";
 
 const BRAND = "#6F2DA8";
 const BRAND_SOFT = "var(--chat-soft)";
@@ -75,6 +86,7 @@ function FormattedMessageText({ text }) {
 
 export default function MessageRow({
   authorName,
+  chatId,
   currentUser,
   message,
   onCopy,
@@ -91,6 +103,9 @@ export default function MessageRow({
 }) {
   const [actionsAnchor, setActionsAnchor] = useState(null);
   const [reactionAnchor, setReactionAnchor] = useState(null);
+  const [infoOpen, setInfoOpen] = useState(false);
+  const [infoLoading, setInfoLoading] = useState(false);
+  const [infoData, setInfoData] = useState(null);
   const dragStart = useRef(null);
   const isMe = message.direction === "outbound";
   const age = Date.now() - new Date(message.sentAt).getTime();
@@ -100,6 +115,65 @@ export default function MessageRow({
   const initials = (
     isMe ? getBuddyName(currentUser) : authorName || "?"
   ).charAt(0);
+  const messageDate = new Date(message.sentAt);
+  const formattedMessageDate = Number.isNaN(messageDate.getTime())
+    ? message.timestamp || "Unknown"
+    : new Intl.DateTimeFormat(undefined, {
+        dateStyle: "medium",
+        timeStyle: "short",
+      }).format(messageDate);
+  const openInfo = async () => {
+    setInfoOpen(true);
+    if (!chatId || !message.id || infoData || infoLoading) return;
+    setInfoLoading(true);
+    try {
+      const response = await getChatMessageInfoService(chatId, message.id);
+      setInfoData(response.data?.data || response.data || null);
+    } catch {
+      setInfoData({ error: "Message delivery details are unavailable." });
+    } finally {
+      setInfoLoading(false);
+    }
+  };
+  const recipients = infoData?.recipients || [];
+  const readRecipients = recipients.filter((recipient) => recipient.status === "read");
+  const deliveredRecipients = recipients.filter((recipient) => recipient.status !== "read");
+  const renderRecipient = (recipient) => {
+    const recipientName = recipient.user?.name || recipient.user?.email || "Chat user";
+    const timestamp = recipient.status === "read" ? recipient.readAt : recipient.deliveredAt;
+    return (
+      <Box key={recipient.user?.id || recipientName} display="flex" alignItems="center" gap={1.25} sx={{ px: 1.25, py: 1 }}>
+        <Avatar src={getImageUrl(recipient.user)} sx={{ width: 40, height: 40, bgcolor: "#e5dcff", color: BRAND }}>
+          {recipientName.charAt(0).toUpperCase()}
+        </Avatar>
+        <Box minWidth={0} flex={1}>
+          <Typography variant="body2" fontWeight={700} noWrap>{recipientName}</Typography>
+          <Typography variant="body2" color="text.secondary">
+            {recipient.status === "read" ? "Read" : "Delivered"}{timestamp ? ` · ${new Date(timestamp).toLocaleString()}` : ""}
+          </Typography>
+        </Box>
+        {recipient.status === "read" ? (
+          <DoneAllRoundedIcon sx={{ color: "#5b7cff", fontSize: 20 }} />
+        ) : (
+          <DoneRoundedIcon sx={{ color: "text.secondary", fontSize: 20 }} />
+        )}
+      </Box>
+    );
+  };
+
+  if (message.metadata?.kind === "group_member_removed") {
+    return (
+      <Box display="flex" justifyContent="center" width="100%" px={1} py={0.75}>
+        <Typography
+          variant="caption"
+          color="text.secondary"
+          sx={{ px: 1.5, py: 0.5, borderRadius: 2, bgcolor: "action.hover", textAlign: "center" }}
+        >
+          {message.text}
+        </Typography>
+      </Box>
+    );
+  }
 
   const react = (emoji) => {
     if (!isMe) onReact?.(message.id, emoji);
@@ -339,6 +413,7 @@ export default function MessageRow({
         onDelete={onDelete}
         onEdit={onEdit}
         onForward={onForward}
+        onInfo={openInfo}
         onOpenPicker={(anchor) => setReactionAnchor(anchor)}
         onPin={onPin}
         onReact={react}
@@ -347,6 +422,69 @@ export default function MessageRow({
         selected={selected}
         selectionMode={selectionMode}
       />
+      <Dialog
+        open={infoOpen}
+        onClose={() => setInfoOpen(false)}
+        fullWidth
+        maxWidth="xs"
+        PaperProps={{ sx: { borderRadius: 3, overflow: "hidden" } }}
+      >
+        <DialogTitle sx={{ px: 2.5, py: 1.75, display: "flex", alignItems: "center", gap: 1.25 }}>
+          <Box sx={{ display: "grid", placeItems: "center", width: 36, height: 36, borderRadius: 2, bgcolor: "#eee8ff", color: BRAND }}>
+            <VisibilityOutlinedIcon fontSize="small" />
+          </Box>
+          <Box sx={{ flex: 1 }}>
+            <Typography fontWeight={800} lineHeight={1.15}>Message info</Typography>
+            <Typography variant="caption" color="text.secondary">Delivery and read status</Typography>
+          </Box>
+          <IconButton aria-label="Close message info" onClick={() => setInfoOpen(false)} size="small">
+            <CloseIcon fontSize="small" />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent sx={{ px: 2.5, py: 2.25, bgcolor: "#faf9ff" }}>
+          <Box sx={{ p: 1.75, borderRadius: 2.5, bgcolor: isMe ? "#dcf8d6" : "#fff", border: "1px solid", borderColor: "divider", boxShadow: "0 4px 14px rgba(53, 35, 92, 0.06)" }}>
+          <Typography sx={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", fontSize: 14.5 }}>
+            {message.text || (message.attachments?.length ? "Attachment" : "Message")}
+          </Typography>
+          <Typography variant="caption" color="text.secondary" display="block" textAlign="right" sx={{ mt: 1 }}>
+            {formattedMessageDate}
+          </Typography>
+          </Box>
+          <Divider sx={{ my: 2 }} />
+          {infoLoading && <Typography variant="body2" color="text.secondary">Loading delivery details…</Typography>}
+          {infoData?.error && <Typography color="error" variant="body2">{infoData.error}</Typography>}
+          {!infoLoading && !infoData?.error && readRecipients.length > 0 && (
+            <>
+              <Stack direction="row" alignItems="center" gap={1} sx={{ px: 1.25, mb: 0.5 }}>
+                <DoneAllRoundedIcon sx={{ color: "#5b7cff", fontSize: 19 }} />
+                <Typography variant="subtitle2" fontWeight={800}>Read by</Typography>
+                <Typography variant="caption" color="text.secondary">{readRecipients.length}</Typography>
+              </Stack>
+              <Box sx={{ bgcolor: "#fff", borderRadius: 2, border: "1px solid", borderColor: "divider" }}>
+                {readRecipients.map(renderRecipient)}
+              </Box>
+            </>
+          )}
+          {!infoLoading && !infoData?.error && deliveredRecipients.length > 0 && (
+            <>
+              <Stack direction="row" alignItems="center" gap={1} sx={{ px: 1.25, mb: 0.5 }}>
+                <DoneRoundedIcon sx={{ color: "text.secondary", fontSize: 19 }} />
+                <Typography variant="subtitle2" fontWeight={800}>Delivered to</Typography>
+                <Typography variant="caption" color="text.secondary">{deliveredRecipients.length}</Typography>
+              </Stack>
+              <Box sx={{ bgcolor: "#fff", borderRadius: 2, border: "1px solid", borderColor: "divider" }}>
+                {deliveredRecipients.map(renderRecipient)}
+              </Box>
+            </>
+          )}
+          {!infoLoading && infoData && !infoData.error && recipients.length === 0 && (
+            <Typography variant="body2" color="text.secondary">No recipients found.</Typography>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 2.5, py: 1.25, bgcolor: "#fff" }}>
+          <Button onClick={() => setInfoOpen(false)} sx={{ textTransform: "none", fontWeight: 700 }}>Close</Button>
+        </DialogActions>
+      </Dialog>
       {!isMe && (
         <Popover
           open={Boolean(reactionAnchor)}

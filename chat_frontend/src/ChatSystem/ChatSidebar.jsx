@@ -243,6 +243,7 @@ export default function ChatSidebar({
     }
   };
 
+
   const handleToggleNotifications = async () => {
     if (notificationsEnabled) {
       await persistNotificationSetting(false);

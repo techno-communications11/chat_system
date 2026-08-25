@@ -12,8 +12,10 @@ import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import EditIcon from "@mui/icons-material/Edit";
 import EmojiEmotionsIcon from "@mui/icons-material/EmojiEmotions";
 import ForwardIcon from "@mui/icons-material/Forward";
+import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import PushPinIcon from "@mui/icons-material/PushPin";
 import ReplyIcon from "@mui/icons-material/Reply";
+import SelectAllIcon from "@mui/icons-material/SelectAll";
 import { REACTION_OPTIONS } from "../../utils/constants";
 
 export default function MessageActions({
@@ -27,6 +29,7 @@ export default function MessageActions({
   onDelete,
   onEdit,
   onForward,
+  onInfo,
   onOpenPicker,
   onPin,
   onReact,
@@ -93,6 +96,13 @@ export default function MessageActions({
         </Box>
       )}
       <List dense disablePadding>
+        <ListItemButton onClick={() => run(onInfo)} sx={{ gap: 1.25, py: 1 }}>
+          <InfoOutlinedIcon sx={{ fontSize: 18, color: "text.secondary" }} />
+          <ListItemText
+            primary="Message info"
+            primaryTypographyProps={{ fontSize: 13.5, fontWeight: 500 }}
+          />
+        </ListItemButton>
         <ListItemButton onClick={() => run(onCopy)} sx={{ gap: 1.25, py: 1 }}>
           <ContentCopyIcon sx={{ fontSize: 18, color: "text.secondary" }} />
           <ListItemText
@@ -108,6 +118,7 @@ export default function MessageActions({
             }}
             sx={{ gap: 1.25, py: 1 }}
           >
+            <SelectAllIcon sx={{ fontSize: 18, color: "text.secondary" }} />
             <ListItemText
               primary="Select"
               primaryTypographyProps={{ fontSize: 13.5, fontWeight: 500 }}

@@ -29,6 +29,7 @@ import {
 } from "../controllers/conversation.controllers.js";
 import {
   getConversationMessages,
+  getConversationMessageInfo,
   searchMessages,
   postConversationMessage,
   patchConversationMessage,
@@ -133,6 +134,11 @@ chatServiceRouter.get(
   "/conversations/:chatId/messages",
   checkAuth,
   getConversationMessages,
+);
+chatServiceRouter.get(
+  "/conversations/:chatId/messages/:messageId/info",
+  checkAuth,
+  getConversationMessageInfo,
 );
 chatServiceRouter.post(
   "/conversations/:chatId/messages",

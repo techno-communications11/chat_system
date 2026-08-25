@@ -967,6 +967,7 @@ export default function ChatWindow({
   onEndActiveCall,
   onLeaveGroup,
   onTransferOwnership,
+  onRemoveGroupMember,
   onLoadOlderMessages,
   inputValue,
   mentionableUsers = [],
@@ -1420,6 +1421,11 @@ export default function ChatWindow({
               onCloseMenu={closeGroupMenu}
               onLeaveGroup={onLeaveGroup}
               onTransferOwnership={onTransferOwnership}
+              onRemoveMember={onRemoveGroupMember}
+              isGroupAdmin={groupMembers.some((member) =>
+                isSamePerson(member, currentUser) &&
+                ["owner", "admin"].includes(String(member.conversationRole || "").toLowerCase())
+              )}
               onOpenInfo={openGroupInfo}
               onOpenMedia={() => { setMediaDialogOpen(true); closeGroupMenu(); }}
               onClearChat={() => { onClearChat?.(); closeGroupMenu(); }}
@@ -1594,6 +1600,7 @@ export default function ChatWindow({
                     )}
                     <MessageRowComponent
                       message={msg}
+                      chatId={selectedChat.chatId || selectedChat.id}
                       currentUser={currentUser}
                       mentionableUsers={
                         selectedChat.type === "channel" ? mentionableUsers : []

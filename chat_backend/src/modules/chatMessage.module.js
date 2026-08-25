@@ -5,8 +5,8 @@ const ChatMessage = sequelize.define(
   "ChatMessage",
   {
     id: {
-      type: DataTypes.INTEGER,
-      autoIncrement: true,
+      type: DataTypes.UUID,
+      defaultValue: DataTypes.UUIDV4,
       primaryKey: true,
     },
     conversationId: {
@@ -22,7 +22,7 @@ const ChatMessage = sequelize.define(
       allowNull: false,
     },
     replyToMessageId: {
-      type: DataTypes.INTEGER,
+      type: DataTypes.UUID,
       allowNull: true,
     },
     metadata: {

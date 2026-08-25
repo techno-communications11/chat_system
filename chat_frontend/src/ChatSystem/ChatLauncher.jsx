@@ -26,6 +26,7 @@ import { useChatRealtime } from "./useChatRealtime";
 import {
   showChatNotification,
 } from "./chatNotifications";
+import { getTokenUser } from "../utils/authToken";
 import {
   openDirectChatService,
   getChatUsersService,
@@ -46,11 +47,7 @@ import {
 } from "./chatHelpers";
 
 const getCurrentUser = () => {
-  try {
-    return JSON.parse(localStorage.getItem("user") || "null");
-  } catch {
-    return null;
-  }
+  return getTokenUser();
 };
 
 const isCurrentUserRecord = (item, currentUser) => {

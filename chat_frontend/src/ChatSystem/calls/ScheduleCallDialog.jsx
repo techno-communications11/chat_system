@@ -216,6 +216,9 @@ export default function ScheduleCallDialog({
                   : "This event will be added only to your calendar because no participant email is available."}
               </Typography>
             </Paper>
+            <Typography variant="caption" color="text.secondary">
+              Google will ask you to choose the account where this event should be created.
+            </Typography>
           </Stack>
         )}
       </DialogContent>

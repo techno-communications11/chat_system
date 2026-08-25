@@ -15,7 +15,12 @@ export const allowedOrigins = new Set([
   ...runtimeConfig.clientOrigins,
   "http://localhost:5174",
   "http://127.0.0.1:5174",
+  "http://192.168.9.38:5174",
 ]);
+
+const isDevelopmentOrigin = (origin) =>
+  runtimeConfig.nodeEnv !== "production" &&
+  /^https?:\/\/(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+):\d+$/i.test(origin);
 
 export const createApp = () => {
   const app = express();
@@ -28,7 +33,9 @@ export const createApp = () => {
   app.use(
     cors({
       origin(origin, callback) {
-        if (!origin || allowedOrigins.has(origin)) return callback(null, true);
+        if (!origin || allowedOrigins.has(origin) || isDevelopmentOrigin(origin)) {
+          return callback(null, true);
+        }
         return callback(new Error("Origin is not allowed by CORS"));
       },
       methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],

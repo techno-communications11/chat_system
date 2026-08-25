@@ -23,6 +23,18 @@ const ChatUser = sequelize.define(
       type: DataTypes.STRING,
       allowNull: false,
     },
+    designation: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+    managerUserId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
+    marketId: {
+      type: DataTypes.UUID,
+      allowNull: true,
+    },
     passwordHash: {
       type: DataTypes.STRING(512),
       allowNull: false,
@@ -35,19 +47,6 @@ const ChatUser = sequelize.define(
       type: DataTypes.ENUM("active", "disabled"),
       allowNull: false,
       defaultValue: "active",
-    },
-    presence: {
-      type: DataTypes.ENUM("online", "away", "busy", "offline"),
-      allowNull: false,
-      defaultValue: "offline",
-    },
-    lastSeenAt: {
-      type: DataTypes.DATE,
-      allowNull: true,
-    },
-    metadata: {
-      type: DataTypes.JSON,
-      allowNull: true,
     },
   },
   {

@@ -335,6 +335,22 @@ export const emitToConversation = (appName, chatId, event, payload) => {
   io.to(room(appName, `conversation:${String(chatId)}`)).emit(event, payload);
 };
 
+export const notifyConversationMemberRemoved = async ({
+  appName = "chat_system",
+  conversationId,
+  removedUser,
+  removedBy,
+  systemMessage,
+}) => {
+  const publicChatId = await getPublicConversationId(appName, conversationId);
+  emitToConversation(appName, publicChatId, "conversation:member-removed", {
+    chatId: publicChatId,
+    removedUser,
+    removedBy,
+    systemMessage,
+  });
+};
+
 export const broadcastPresenceUpdate = (payload) => {
   if (!io) return;
   io.to(room(payload?.appName, "presence")).emit("presence:update", payload);

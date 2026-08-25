@@ -10,7 +10,7 @@ const ChatMessageReaction = sequelize.define(
       primaryKey: true,
     },
     messageId: {
-      type: DataTypes.INTEGER,
+      type: DataTypes.UUID,
       allowNull: false,
     },
     chatIdentityId: {

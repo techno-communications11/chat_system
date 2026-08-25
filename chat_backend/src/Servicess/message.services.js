@@ -14,6 +14,7 @@ import {
   normalizeLimit,
   normalizeMessagePage,
   toMessage,
+  toUser,
   getMessageWithReactions,
   getConversationParticipantUserIds,
   assertString,
@@ -22,6 +23,44 @@ import {
   getParticipantForMember,
   ChatServiceError,
 } from "../helpers/chat.helpers.js";
+
+export const getChatMessageInfo = async ({ actor, chatId, messageId }) => {
+  const identity = await ensureLocalIdentity(actor);
+  const participant = await getParticipantForMember({
+    chatId,
+    identityId: identity.id,
+    appName: actor.appName,
+  });
+  const message = await ChatMessage.findOne({
+    where: { id: messageId, conversationId: participant.conversation.id },
+    include: [{ model: ChatIdentity, as: "sender" }],
+  });
+
+  if (!message) {
+    throw new ChatServiceError("Message not found", { status: 404, code: "CHAT_MESSAGE_NOT_FOUND" });
+  }
+
+  const participants = await ChatConversationParticipant.findAll({
+    where: { conversationId: participant.conversation.id },
+    include: [{ model: ChatIdentity, as: "identity" }],
+    order: [["id", "ASC"]],
+  });
+  const sentAt = new Date(message.createdAt).getTime();
+  const recipients = participants
+    .filter((item) => item.chatIdentityId !== message.senderIdentityId)
+    .map((item) => {
+      const readAt = item.lastReadAt ? new Date(item.lastReadAt).toISOString() : null;
+      const read = Boolean(readAt && new Date(readAt).getTime() >= sentAt);
+      return {
+        user: toUser(item.identity),
+        deliveredAt: message.createdAt,
+        readAt: read ? readAt : null,
+        status: read ? "read" : "delivered",
+      };
+    });
+
+  return { message: toMessage(message), sentAt: message.createdAt, recipients };
+};
 
 export const searchChatMessages = async ({ actor, query = {} }) => {
   const identity = await ensureLocalIdentity(actor);

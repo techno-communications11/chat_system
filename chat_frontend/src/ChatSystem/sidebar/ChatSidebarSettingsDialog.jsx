@@ -25,8 +25,12 @@ import PhotoCameraIcon from "@mui/icons-material/PhotoCamera";
 import PersonOutlineIcon from "@mui/icons-material/PersonOutline";
 import UploadFileIcon from "@mui/icons-material/UploadFile";
 import LogoutIcon from "@mui/icons-material/Logout";
+import WorkOutlineIcon from "@mui/icons-material/WorkOutline";
+import SupervisorAccountOutlinedIcon from "@mui/icons-material/SupervisorAccountOutlined";
+import PublicOutlinedIcon from "@mui/icons-material/PublicOutlined";
 import { getImageUrl } from "../chatHelpers";
 import { clearAuthToken } from "../../utils/authToken";
+import { updateChatSettingsService } from "../../Services/chat.services";
 import { getInitial, statusOptions } from "./sidebarUtils";
 import { useThemeMode } from "../../themeMode";
 import { useState } from "react";
@@ -171,15 +175,36 @@ export default function ChatSidebarSettingsDialog({
         </Menu>
 
         <Dialog open={profileOpen} onClose={() => setProfileOpen(false)} fullWidth maxWidth="xs">
-          <DialogTitle>Profile</DialogTitle>
-          <DialogContent>
-            <Box display="flex" flexDirection="column" alignItems="center" gap={1.25} py={1}>
-              <Avatar src={getImageUrl(currentUser)} sx={{ width: 88, height: 88, bgcolor: "#6F2DA8", fontSize: 30, fontWeight: 900 }}>
-                {getInitial(currentUserName)}
-              </Avatar>
-              <Typography variant="h6" fontWeight={800}>{currentUserName}</Typography>
-              <Typography color="text.secondary">{currentUser?.email || "Pingly user"}</Typography>
-              <Typography variant="body2" color="text.secondary">Status: {currentStatus}</Typography>
+          <DialogTitle sx={{ pb: 0 }}>Profile</DialogTitle>
+          <DialogContent sx={{ pt: 2 }}>
+            <Box sx={{ borderRadius: 3, overflow: "hidden", bgcolor: "#f7f4ff", border: "1px solid #ebe5ff" }}>
+              <Box sx={{ height: 72, background: "linear-gradient(135deg, #6F2DA8, #4f46e5)" }} />
+              <Box display="flex" flexDirection="column" alignItems="center" sx={{ px: 2, pb: 2.5, mt: -5 }}>
+                <Avatar src={getImageUrl(currentUser)} sx={{ width: 92, height: 92, border: "4px solid #fff", bgcolor: "#6F2DA8", fontSize: 30, fontWeight: 900, boxShadow: "0 6px 18px rgba(54,35,120,.2)" }}>
+                  {getInitial(currentUserName)}
+                </Avatar>
+                <Typography variant="h6" fontWeight={850} sx={{ mt: 1 }}>{currentUserName}</Typography>
+                <Typography variant="body2" color="text.secondary" noWrap sx={{ maxWidth: "100%" }}>{currentUser?.email || "Pingly user"}</Typography>
+                <Box display="flex" alignItems="center" gap={0.75} sx={{ mt: 1, px: 1.25, py: 0.5, borderRadius: 99, bgcolor: "#e9f9ef", color: "#16803c" }}>
+                  <CircleIcon sx={{ fontSize: 9 }} />
+                  <Typography variant="caption" fontWeight={800}>{currentStatus}</Typography>
+                </Box>
+              </Box>
+            </Box>
+            <Box sx={{ mt: 2, display: "grid", gap: 1 }}>
+              {[
+                [<WorkOutlineIcon />, "Designation", currentUser?.designation || currentUser?.jobTitle],
+                [<SupervisorAccountOutlinedIcon />, "Manager", currentUser?.managerName || currentUser?.manager_name],
+                [<PublicOutlinedIcon />, "Market", currentUser?.market || currentUser?.marketName],
+              ].map(([icon, label, value]) => (
+                <Box key={label} display="flex" alignItems="center" gap={1.25} sx={{ px: 1.25, py: 1, borderRadius: 2, bgcolor: "action.hover" }}>
+                  <Box sx={{ display: "grid", placeItems: "center", color: "#6F2DA8" }}>{icon}</Box>
+                  <Box minWidth={0}>
+                    <Typography variant="caption" color="text.secondary" fontWeight={700}>{label}</Typography>
+                    <Typography variant="body2" fontWeight={750} noWrap>{value || "Not set"}</Typography>
+                  </Box>
+                </Box>
+              ))}
             </Box>
           </DialogContent>
           <DialogActions>
@@ -266,7 +291,11 @@ export default function ChatSidebarSettingsDialog({
             exclusive
             size="small"
             value={mode}
-            onChange={(_, nextMode) => nextMode && setMode(nextMode)}
+            onChange={(_, nextMode) => {
+              if (!nextMode) return;
+              setMode(nextMode);
+              updateChatSettingsService({ themeMode: nextMode }).catch(() => {});
+            }}
             aria-label="Choose theme"
           >
             <ToggleButton value="light" aria-label="Light theme" sx={{ textTransform: "none", gap: 0.5 }}>
@@ -290,7 +319,7 @@ export default function ChatSidebarSettingsDialog({
               if (onLogout) {
                 await onLogout();
               } else {
-                window.location.replace("http://127.0.0.1:5174/login");
+                window.location.replace("/login");
               }
             } finally {
               clearAuthToken();
