@@ -35,6 +35,14 @@ const ChatUser = sequelize.define(
       type: DataTypes.UUID,
       allowNull: true,
     },
+    backoffice: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+    marketBackoffice: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
     passwordHash: {
       type: DataTypes.STRING(512),
       allowNull: false,

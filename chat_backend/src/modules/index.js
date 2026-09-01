@@ -397,6 +397,14 @@ const ensureSchemaCompatibility = async () => {
     type: DataTypes.UUID,
     allowNull: true,
   });
+  await addColumnIfMissing(queryInterface, "chat_users", "backoffice", {
+    type: DataTypes.STRING,
+    allowNull: true,
+  });
+  await addColumnIfMissing(queryInterface, "chat_users", "marketBackoffice", {
+    type: DataTypes.STRING,
+    allowNull: true,
+  });
   await addIndexIfMissing(queryInterface, "chat_users", ["managerUserId"], "chat_users_manager_user");
   await addIndexIfMissing(queryInterface, "chat_users", ["marketId"], "chat_users_market");
   await addForeignKeyIfMissing("chat_users", "managerUserId", "chat_users", "id", "chat_users_manager_fk");

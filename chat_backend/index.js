@@ -11,7 +11,7 @@ validateRuntimeConfig();
 
 const app = createApp();
 const PORT = runtimeConfig.port;
-const HOST = process.env.HOST || "0.0.0.0";
+const HOST = process.env.HOST;
 let server;
 let isShuttingDown = false;
 

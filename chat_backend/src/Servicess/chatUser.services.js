@@ -77,6 +77,8 @@ const toPublicUser = (user) => {
     managerName,
     marketId: plainUser.marketId || null,
     market: marketName,
+    backoffice: plainUser.backoffice || null,
+    marketBackoffice: plainUser.marketBackoffice || plainUser.backoffice || marketName || null,
     avatarUrl: plainUser.avatarUrl,
     status: plainUser.status,
     presence,
@@ -98,6 +100,8 @@ const toPublicUser = (user) => {
     managerName,
     marketId: plainUser.marketId || null,
     market: marketName,
+    backoffice: plainUser.backoffice || null,
+    marketBackoffice: plainUser.marketBackoffice || plainUser.backoffice || marketName || null,
     avatarUrl: plainUser.avatarUrl,
     status: plainUser.status,
     presence,
@@ -470,7 +474,36 @@ const normalizeAdminUserInput = (input = {}) => ({
   password: input.password == null ? "" : String(input.password),
   roleName: normalizeRoleName(input.roleName || input.role || "member"),
   designation: input.designation ? String(input.designation).trim() : null,
+  manager: input.manager ?? input.managerName ?? input.managerUserId ?? null,
+  market: input.market ?? input.marketName ?? input.marketId ?? null,
+  backoffice: input.backoffice ? String(input.backoffice).trim() : null,
+  marketBackoffice: input.marketBackoffice ? String(input.marketBackoffice).trim() : null,
 });
+
+const resolveUserManager = async (value, userId) => {
+  if (value === undefined || value === null || String(value).trim() === "") return null;
+  const text = String(value).trim();
+  const manager = await ChatUser.findOne({
+    where: {
+      [Op.or]: [{ id: text }, { email: text.toLowerCase() }, { username: text.toLowerCase() }, { displayName: text }],
+    },
+  });
+  if (!manager) throw Object.assign(new Error(`Manager not found: ${text}`), { status: 400, code: "CHAT_MANAGER_NOT_FOUND" });
+  if (String(manager.id) === String(userId)) throw Object.assign(new Error("A user cannot be their own manager"), { status: 400, code: "CHAT_INVALID_MANAGER" });
+  return manager.id;
+};
+
+const resolveMarket = async (value) => {
+  if (value === undefined || value === null || String(value).trim() === "") return null;
+  const text = String(value).trim();
+  const existingById = await ChatMarket.findByPk(text);
+  if (existingById) return existingById.id;
+  const [market] = await ChatMarket.findOrCreate({
+    where: { name: text },
+    defaults: { name: text },
+  });
+  return market.id;
+};
 
 const createAdminUserRecord = async (input) => {
   const normalized = normalizeAdminUserInput(input);
@@ -481,6 +514,9 @@ const createAdminUserRecord = async (input) => {
     throw error;
   }
   assertPassword(normalized.password);
+
+  const managerUserId = await resolveUserManager(normalized.manager);
+  const marketId = await resolveMarket(normalized.market);
 
   const role = await ChatRole.findOne({ where: { name: normalized.roleName } });
   if (!role) {
@@ -495,10 +531,14 @@ const createAdminUserRecord = async (input) => {
     username: normalized.username,
     displayName: normalized.displayName,
     designation: normalized.designation,
+    managerUserId,
+    marketId,
+    backoffice: normalized.backoffice,
+    marketBackoffice: normalized.marketBackoffice,
     passwordHash: hashPassword(normalized.password),
   });
   await user.addRole(role);
-  return user;
+  return ChatUser.findByPk(user.id, { include: adminUserInclude });
 };
 
 export const listAdminUsers = async ({ search = "", status = "all", role = "all", page = 1, limit = 25 } = {}) => {
@@ -575,7 +615,7 @@ export const bulkCreateAdminUsers = async (users = []) => {
   return { created, failures, createdCount: created.length, failedCount: failures.length };
 };
 
-export const updateAdminUser = async ({ userId, status, roleName, email, username, displayName, designation }) => {
+export const updateAdminUser = async ({ userId, status, roleName, email, username, displayName, designation, manager, managerName, managerUserId, market, marketName, marketId, backoffice, marketBackoffice }) => {
   const user = await ChatUser.findByPk(String(userId), { include: includeRoles });
   if (!user) {
     const error = new Error("Chat user not found");
@@ -588,6 +628,12 @@ export const updateAdminUser = async ({ userId, status, roleName, email, usernam
   if (username !== undefined) profileUpdates.username = String(username).trim().toLowerCase();
   if (displayName !== undefined) profileUpdates.displayName = String(displayName).trim();
   if (designation !== undefined) profileUpdates.designation = String(designation || "").trim() || null;
+  const managerValue = manager !== undefined ? manager : managerName !== undefined ? managerName : managerUserId;
+  const marketValue = market !== undefined ? market : marketName !== undefined ? marketName : marketId;
+  if (managerValue !== undefined) profileUpdates.managerUserId = await resolveUserManager(managerValue, user.id);
+  if (marketValue !== undefined) profileUpdates.marketId = await resolveMarket(marketValue);
+  if (backoffice !== undefined) profileUpdates.backoffice = String(backoffice || "").trim() || null;
+  if (marketBackoffice !== undefined) profileUpdates.marketBackoffice = String(marketBackoffice || "").trim() || null;
   if (Object.values(profileUpdates).some((value) => !value && value !== null)) {
     const error = new Error("email, username, and displayName cannot be empty");
     error.status = 400;

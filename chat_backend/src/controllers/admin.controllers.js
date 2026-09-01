@@ -65,6 +65,14 @@ export const updateAdminUserController = handleRequest(async (req, res) => {
       username: req.body?.username,
       displayName: req.body?.displayName,
       designation: req.body?.designation,
+      manager: req.body?.manager,
+      managerName: req.body?.managerName,
+      managerUserId: req.body?.managerUserId,
+      market: req.body?.market,
+      marketName: req.body?.marketName,
+      marketId: req.body?.marketId,
+      backoffice: req.body?.backoffice,
+      marketBackoffice: req.body?.marketBackoffice,
     }),
   );
 });

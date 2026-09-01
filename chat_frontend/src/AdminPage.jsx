@@ -55,6 +55,8 @@ const emptyForm = {
   password: "",
   roleName: "member",
   designation: "",
+  marketBackoffice: "",
+  manager: "",
 };
 const initials = (name = "User") =>
   name
@@ -140,6 +142,8 @@ export default function AdminPage({ embedded = false }) {
     designation: "",
     roleName: "member",
     status: "active",
+    marketBackoffice: "",
+    manager: "",
   });
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState("");
@@ -235,6 +239,8 @@ export default function AdminPage({ embedded = false }) {
       username: user.username || "",
       displayName: user.name || "",
       designation: user.designation || "",
+      marketBackoffice: user.marketBackoffice || user.market || user.backoffice || "",
+      manager: user.managerName || "",
       roleName: user.role || "member",
       status: user.status || "active",
     });
@@ -247,6 +253,8 @@ export default function AdminPage({ embedded = false }) {
         username: details.username || "",
         displayName: details.name || "",
         designation: details.designation || "",
+        marketBackoffice: details.marketBackoffice || details.market || details.backoffice || "",
+        manager: details.managerName || "",
         roleName: details.role || "member",
         status: details.status || "active",
       });
@@ -568,6 +576,8 @@ export default function AdminPage({ embedded = false }) {
                   value={form.designation}
                   onChange={updateForm("designation")}
                 />
+                <TextField label="Market / Backoffice (optional)" value={form.marketBackoffice} onChange={updateForm("marketBackoffice")} />
+                <TextField label="Manager (optional)" helperText="Enter the manager's name, username, email, or user ID" value={form.manager} onChange={updateForm("manager")} />
                 <FormControl>
                   <InputLabel>Role</InputLabel>
                   <Select
@@ -598,7 +608,7 @@ export default function AdminPage({ embedded = false }) {
               <Typography color="text.secondary" sx={{ mb: 2 }}>
                 Upload a CSV with these headers:{" "}
                 <code>
-                  email,username,displayName,password,roleName,designation
+                  email,username,displayName,password,roleName,designation,marketBackoffice,manager
                 </code>
               </Typography>
               <Paper
@@ -659,6 +669,8 @@ export default function AdminPage({ embedded = false }) {
                 ["Role", selected.role],
                 ["Status", selected.status],
                 ["Designation", selected.designation || "—"],
+                ["Market / Backoffice", selected.marketBackoffice || selected.market || selected.backoffice || "—"],
+                ["Manager", selected.managerName || "—"],
                 [
                   "Created",
                   selected.createdAt
@@ -733,6 +745,8 @@ export default function AdminPage({ embedded = false }) {
                 setEditForm({ ...editForm, designation: event.target.value })
               }
             />
+            <TextField label="Market / Backoffice" value={editForm.marketBackoffice} onChange={(event) => setEditForm({ ...editForm, marketBackoffice: event.target.value })} />
+            <TextField label="Manager" helperText="Name, username, email, or user ID" value={editForm.manager} onChange={(event) => setEditForm({ ...editForm, manager: event.target.value })} />
             <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
               <FormControl fullWidth size="small" sx={{ minWidth: 0 }}>
                 <InputLabel>Role</InputLabel>
