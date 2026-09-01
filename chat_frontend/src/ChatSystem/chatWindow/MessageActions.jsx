@@ -35,8 +35,6 @@ export default function MessageActions({
   onReact,
   onReply,
   onSelect,
-  selected,
-  selectionMode,
 }) {
   const close = () => onClose?.();
   const run = (callback) => {

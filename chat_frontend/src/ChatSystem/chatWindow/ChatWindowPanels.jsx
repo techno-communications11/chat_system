@@ -66,12 +66,12 @@ export function PinnedMessageBanner({ latestPinnedMessage, pinnedCount }) {
       sx={{
         bgcolor: "var(--chat-subtle)",
         borderBottom: "0.5px solid",
-        borderColor: "#fed7aa",
+        borderColor: (theme) => theme.palette.mode === "dark" ? "#7c2d12" : "#fed7aa",
       }}
     >
-      <PushPinIcon sx={{ fontSize: 17, color: "#9a3412", flexShrink: 0 }} />
+      <PushPinIcon sx={{ fontSize: 17, color: (theme) => theme.palette.mode === "dark" ? "#fdba74" : "#9a3412", flexShrink: 0 }} />
       <Box minWidth={0} flex={1}>
-        <Typography fontSize={12} fontWeight={800} color="#9a3412" noWrap>
+        <Typography fontSize={12} fontWeight={800} sx={{ color: (theme) => theme.palette.mode === "dark" ? "#fdba74" : "#9a3412" }} noWrap>
           Pinned message
         </Typography>
         <Typography fontSize={12.5} color="text.secondary" noWrap>
@@ -82,7 +82,7 @@ export function PinnedMessageBanner({ latestPinnedMessage, pinnedCount }) {
         <Typography
           fontSize={11}
           fontWeight={700}
-          color="#9a3412"
+          sx={{ color: (theme) => theme.palette.mode === "dark" ? "#fdba74" : "#9a3412" }}
           flexShrink={0}
         >
           +{pinnedCount - 1}

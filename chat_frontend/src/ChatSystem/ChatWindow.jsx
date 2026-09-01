@@ -41,6 +41,7 @@ import InsertDriveFileIcon from "@mui/icons-material/InsertDriveFile";
 import MoreHorizIcon from "@mui/icons-material/MoreHoriz";
 import PushPinIcon from "@mui/icons-material/PushPin";
 import ReplyIcon from "@mui/icons-material/Reply";
+import RefreshIcon from "@mui/icons-material/Refresh";
 import SearchIcon from "@mui/icons-material/Search";
 import SendIcon from "@mui/icons-material/Send";
 import BlockIcon from "@mui/icons-material/Block";
@@ -1563,16 +1564,30 @@ export default function ChatWindow({
               }}
             >
               {hasOlderMessages && (
-                <Box display="flex" justifyContent="center" mb={1}>
-                  <Button
+                <Box
+                  display="flex"
+                  justifyContent="center"
+                  mb={1}
+                  sx={{
+                    position: "sticky",
+                    top: 0,
+                    zIndex: 2,
+                    py: 0.5,
+                    bgcolor: "background.paper",
+                  }}
+                >
+                  <Tooltip title={loadingOlderMessages ? "Loading previous messages" : "Load previous messages"}>
+                    <span>
+                  <IconButton
                     size="small"
                     onClick={onLoadOlderMessages}
                     disabled={loadingOlderMessages}
-                    startIcon={loadingOlderMessages ? <CircularProgress size={14} /> : null}
-                    sx={{ textTransform: "none" }}
+                    aria-label="Load previous messages"
                   >
-                    {loadingOlderMessages ? "Loading older messages…" : "Load older messages"}
-                  </Button>
+                    {loadingOlderMessages ? <CircularProgress size={18} /> : <RefreshIcon fontSize="small" />}
+                  </IconButton>
+                    </span>
+                  </Tooltip>
                 </Box>
               )}
             {groupedMessages.length === 0 ? (

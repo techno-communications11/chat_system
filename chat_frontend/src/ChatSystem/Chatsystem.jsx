@@ -844,7 +844,6 @@ export default function ChatSystem({ standalone = false, adminPage = false }) {
       currentUser,
       currentUserEmail,
       currentUserId,
-      messageMentionsUser,
       messagesByChat,
       mutedChatIds,
       navigate,
@@ -1180,7 +1179,7 @@ export default function ChatSystem({ standalone = false, adminPage = false }) {
   const clearUnreadForChat = useCallback(() => {}, []);
 
   const markChatAsRead = useCallback(
-    async ({ chatId, userId, email } = {}) => {
+    async ({ chatId } = {}) => {
       if (!chatId) return;
 
       const response = await markConversationReadService(chatId);
@@ -1623,14 +1622,6 @@ export default function ChatSystem({ standalone = false, adminPage = false }) {
         ? prev.filter((selectedId) => selectedId !== userId)
         : [...prev, userId],
     );
-  };
-
-  const openGroupDialog = () => {
-    setGroupTitle("");
-    setGroupUserIds([]);
-    setGroupSearch("");
-    setGroupError("");
-    setGroupDialogOpen(true);
   };
 
   const handleCreateGroup = async () => {

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Avatar,
   Box,
@@ -123,7 +123,7 @@ export default function MessageRow({
         dateStyle: "medium",
         timeStyle: "short",
       }).format(messageDate);
-  const loadInfo = async ({ force = false } = {}) => {
+  const loadInfo = useCallback(async ({ force = false } = {}) => {
     if (!chatId || !message.id || (infoLoading && !force)) return;
     setInfoLoading(true);
     try {
@@ -134,7 +134,7 @@ export default function MessageRow({
     } finally {
       setInfoLoading(false);
     }
-  };
+  }, [chatId, infoLoading, message.id]);
   const openInfo = async () => {
     setInfoOpen(true);
     if (!infoData && !infoLoading) await loadInfo();
@@ -146,7 +146,7 @@ export default function MessageRow({
     // always shows the latest delivery/read state.
     setInfoData(null);
     if (infoOpen) loadInfo({ force: true });
-  }, [messageInfoVersion]);
+  }, [infoOpen, isMe, loadInfo, messageInfoVersion]);
   const recipients = infoData?.recipients || [];
   const readRecipients = recipients.filter((recipient) => recipient.status === "read");
   const deliveredRecipients = recipients.filter((recipient) => recipient.status !== "read");
@@ -453,8 +453,10 @@ export default function MessageRow({
             <CloseIcon fontSize="small" />
           </IconButton>
         </DialogTitle>
-        <DialogContent sx={{ px: 2.5, py: 2.25, bgcolor: "#faf9ff" }}>
-          <Box sx={{ p: 1.75, borderRadius: 2.5, bgcolor: isMe ? "#dcf8d6" : "#fff", border: "1px solid", borderColor: "divider", boxShadow: "0 4px 14px rgba(53, 35, 92, 0.06)" }}>
+        <DialogContent sx={{ px: 2.5, py: 2.25, bgcolor: "background.default" }}>
+          <Box sx={{ p: 1.75, borderRadius: 2.5, bgcolor: (theme) => isMe
+            ? theme.palette.mode === "dark" ? "#263f35" : "#dcf8d6"
+            : theme.palette.background.paper, border: "1px solid", borderColor: "divider", boxShadow: "0 4px 14px rgba(53, 35, 92, 0.06)" }}>
           <Typography sx={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", fontSize: 14.5 }}>
             {message.text || (message.attachments?.length ? "Attachment" : "Message")}
           </Typography>
@@ -472,7 +474,7 @@ export default function MessageRow({
                 <Typography variant="subtitle2" fontWeight={800}>Read by</Typography>
                 <Typography variant="caption" color="text.secondary">{readRecipients.length}</Typography>
               </Stack>
-              <Box sx={{ bgcolor: "#fff", borderRadius: 2, border: "1px solid", borderColor: "divider" }}>
+              <Box sx={{ bgcolor: "background.paper", borderRadius: 2, border: "1px solid", borderColor: "divider" }}>
                 {readRecipients.map(renderRecipient)}
               </Box>
             </>
@@ -484,7 +486,7 @@ export default function MessageRow({
                 <Typography variant="subtitle2" fontWeight={800}>Delivered to</Typography>
                 <Typography variant="caption" color="text.secondary">{deliveredRecipients.length}</Typography>
               </Stack>
-              <Box sx={{ bgcolor: "#fff", borderRadius: 2, border: "1px solid", borderColor: "divider" }}>
+              <Box sx={{ bgcolor: "background.paper", borderRadius: 2, border: "1px solid", borderColor: "divider" }}>
                 {deliveredRecipients.map(renderRecipient)}
               </Box>
             </>
@@ -493,7 +495,7 @@ export default function MessageRow({
             <Typography variant="body2" color="text.secondary">No recipients found.</Typography>
           )}
         </DialogContent>
-        <DialogActions sx={{ px: 2.5, py: 1.25, bgcolor: "#fff" }}>
+        <DialogActions sx={{ px: 2.5, py: 1.25, bgcolor: "background.paper" }}>
           <Button onClick={() => setInfoOpen(false)} sx={{ textTransform: "none", fontWeight: 700 }}>Close</Button>
         </DialogActions>
       </Dialog>

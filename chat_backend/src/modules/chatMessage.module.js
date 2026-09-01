@@ -37,6 +37,7 @@ const ChatMessage = sequelize.define(
     timestamps: true,
     indexes: [
       { fields: ["conversationId", "createdAt"] },
+      { fields: ["conversationId", "senderIdentityId", "createdAt"] },
       { fields: ["senderIdentityId", "createdAt"] },
     ],
   },

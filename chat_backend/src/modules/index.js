@@ -330,7 +330,12 @@ const ensureSchemaCompatibility = async () => {
   await addIndexIfMissing(queryInterface, "chat_conversations", ["appName", "type"], "chat_conversations_app_type");
   await addIndexIfMissing(queryInterface, "chat_conversation_participants", ["chatIdentityId", "conversationId"], "chat_participants_identity_conversation");
   await addIndexIfMissing(queryInterface, "chat_messages", ["conversationId", "createdAt"], "chat_messages_conversation_created");
+  await addIndexIfMissing(queryInterface, "chat_messages", ["conversationId", "senderIdentityId", "createdAt"], "chat_messages_conversation_sender_created");
   await addIndexIfMissing(queryInterface, "chat_messages", ["senderIdentityId", "createdAt"], "chat_messages_sender_created");
+  await addIndexIfMissing(queryInterface, "chat_users", ["status", "createdAt"], "chat_users_status_created");
+  await addIndexIfMissing(queryInterface, "chat_users", ["status", "displayName"], "chat_users_status_display_name");
+  await addIndexIfMissing(queryInterface, "chat_groups", ["appName", "updatedAt"], "chat_groups_app_updated");
+  await addIndexIfMissing(queryInterface, "chat_channels", ["appName", "name"], "chat_channels_app_name");
   await addIndexIfMissing(queryInterface, "chat_message_reactions", ["chatIdentityId", "messageId"], "chat_reactions_identity_message");
   await addIndexIfMissing(queryInterface, "chat_audit_logs", ["appName", "createdAt"], "chat_audit_app_created");
   await addIndexIfMissing(queryInterface, "chat_audit_logs", ["appName", "action", "createdAt"], "chat_audit_app_action_created");

@@ -45,6 +45,7 @@ const ChatGroup = sequelize.define(
   {
     tableName: "chat_groups",
     timestamps: true,
+    indexes: [{ fields: ["appName", "updatedAt"] }],
   },
 );
 

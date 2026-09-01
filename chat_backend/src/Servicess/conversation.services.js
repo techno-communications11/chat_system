@@ -680,29 +680,29 @@ export const listChatChannels = async ({ actor }) => {
   const identity = await ensureLocalIdentity(actor);
   const channels = await ChatChannel.findAll({
     where: { appName: actor.appName },
-    include: [{ model: ChatConversation, as: "conversation" }],
+    include: [{
+      model: ChatConversation,
+      as: "conversation",
+      include: [{
+        model: ChatConversationParticipant,
+        as: "participants",
+        where: { chatIdentityId: identity.id },
+        required: false,
+        attributes: ["chatIdentityId"],
+      }],
+    }],
     order: [["name", "ASC"]],
   });
 
-  const data = [];
-
-  for (const channel of channels) {
-    const membership = await ChatConversationParticipant.findOne({
-      where: {
-        conversationId: channel.conversationId,
-        chatIdentityId: identity.id,
-      },
-    });
-
-    if (channel.visibility === "public" || membership) {
-      data.push({
-        ...toChannel(channel),
-        joined: Boolean(membership),
-      });
-    }
-  }
-
-  return data;
+  return channels
+    .filter((channel) =>
+      channel.visibility === "public" ||
+      (channel.conversation?.participants || []).length > 0,
+    )
+    .map((channel) => ({
+      ...toChannel(channel),
+      joined: (channel.conversation?.participants || []).length > 0,
+    }));
 };
 
 export const joinChatChannel = async ({ actor, channelId }) => {

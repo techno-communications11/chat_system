@@ -60,6 +60,10 @@ const ChatUser = sequelize.define(
   {
     tableName: "chat_users",
     timestamps: true,
+    indexes: [
+      { fields: ["status", "createdAt"] },
+      { fields: ["status", "displayName"] },
+    ],
   },
 );
 

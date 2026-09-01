@@ -6,8 +6,10 @@ import CallIcon from "@mui/icons-material/Call";
 import ChatBubbleIcon from "@mui/icons-material/ChatBubble";
 import GroupAddIcon from "@mui/icons-material/GroupAdd";
 import StickyNote2OutlinedIcon from "@mui/icons-material/StickyNote2Outlined";
+import { useNavigate } from "react-router-dom";
 import { getImageUrl } from "../chatHelpers";
 import { appRailItems, getInitial } from "./sidebarUtils";
+import { CHAT_APP_BASE_PATH } from "../chatRoutes";
 
 export default function SidebarRail({
   avatarUploading,
@@ -21,6 +23,7 @@ export default function SidebarRail({
   onTabSelect,
   totalUnreadCount,
 }) {
+  const navigate = useNavigate();
   const isAdmin = (currentUser?.roles || []).some((role) =>
     ["admin", "superadmin"].includes(String(role).toLowerCase()),
   );
@@ -146,7 +149,7 @@ export default function SidebarRail({
       {isAdmin && (
         <Tooltip title="Admin console" placement="right">
           <IconButton
-            onPointerDown={() => window.location.assign("/chat-app/admin")}
+            onPointerDown={() => navigate(`${CHAT_APP_BASE_PATH}/admin`)}
             sx={{
               width: 40,
               height: 40,

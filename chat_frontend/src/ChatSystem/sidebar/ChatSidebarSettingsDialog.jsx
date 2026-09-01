@@ -177,7 +177,7 @@ export default function ChatSidebarSettingsDialog({
         <Dialog open={profileOpen} onClose={() => setProfileOpen(false)} fullWidth maxWidth="xs">
           <DialogTitle sx={{ pb: 0 }}>Profile</DialogTitle>
           <DialogContent sx={{ pt: 2 }}>
-            <Box sx={{ borderRadius: 3, overflow: "hidden", bgcolor: "#f7f4ff", border: "1px solid #ebe5ff" }}>
+            <Box sx={{ borderRadius: 3, overflow: "hidden", bgcolor: "background.paper", border: "1px solid", borderColor: "divider" }}>
               <Box sx={{ height: 72, background: "linear-gradient(135deg, #6F2DA8, #4f46e5)" }} />
               <Box display="flex" flexDirection="column" alignItems="center" sx={{ px: 2, pb: 2.5, mt: -5 }}>
                 <Avatar src={getImageUrl(currentUser)} sx={{ width: 92, height: 92, border: "4px solid #fff", bgcolor: "#6F2DA8", fontSize: 30, fontWeight: 900, boxShadow: "0 6px 18px rgba(54,35,120,.2)" }}>
@@ -185,7 +185,7 @@ export default function ChatSidebarSettingsDialog({
                 </Avatar>
                 <Typography variant="h6" fontWeight={850} sx={{ mt: 1 }}>{currentUserName}</Typography>
                 <Typography variant="body2" color="text.secondary" noWrap sx={{ maxWidth: "100%" }}>{currentUser?.email || "Pingly user"}</Typography>
-                <Box display="flex" alignItems="center" gap={0.75} sx={{ mt: 1, px: 1.25, py: 0.5, borderRadius: 99, bgcolor: "#e9f9ef", color: "#16803c" }}>
+                <Box display="flex" alignItems="center" gap={0.75} sx={{ mt: 1, px: 1.25, py: 0.5, borderRadius: 99, bgcolor: (theme) => theme.palette.mode === "dark" ? "rgba(34,197,94,.16)" : "#e9f9ef", color: (theme) => theme.palette.mode === "dark" ? "#86efac" : "#16803c" }}>
                   <CircleIcon sx={{ fontSize: 9 }} />
                   <Typography variant="caption" fontWeight={800}>{currentStatus}</Typography>
                 </Box>

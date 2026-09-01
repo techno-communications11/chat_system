@@ -53,6 +53,7 @@ const ChatChannel = sequelize.define(
         unique: true,
         fields: ["appName", "slug"],
       },
+      { fields: ["appName", "name"] },
     ],
   },
 );
