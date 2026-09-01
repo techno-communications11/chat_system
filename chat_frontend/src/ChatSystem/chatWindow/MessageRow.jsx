@@ -318,7 +318,14 @@ export default function MessageRow({
           </Box>
         </Box>
         {message.attachments?.length > 0 && (
-          <Stack spacing={0.75} mt={message.text ? 0.75 : 0}>
+          <Stack
+            spacing={0.75}
+            mt={message.text ? 0.75 : 0}
+            sx={{
+              width: "100%",
+              alignItems: isMe ? "flex-end" : "flex-start",
+            }}
+          >
             {message.attachments.map((file) => (
               (() => {
                 const type = String(file.contentType || "").toLowerCase();
@@ -326,7 +333,7 @@ export default function MessageRow({
 
                 if (isImage && file.url) {
                   return (
-                    <Box key={file.id} sx={{ width: "100%", maxWidth: "min(320px, 100%)", borderRadius: 1.5, overflow: "hidden", border: "1px solid", borderColor: "divider", bgcolor: "background.paper" }}>
+                    <Box key={file.id} sx={{ width: "fit-content", maxWidth: "min(320px, 100%)", borderRadius: 1.5, overflow: "hidden", border: "1px solid", borderColor: "divider", bgcolor: "background.paper" }}>
                       <Link href={file.url} target="_blank" rel="noopener noreferrer" onClick={(event) => event.stopPropagation()}>
                         <Box component="img" src={file.url} alt={file.name || "Shared image"} loading="lazy" sx={{ display: "block", width: "100%", maxWidth: "100%", maxHeight: 280, objectFit: "cover", cursor: "pointer", "&:hover": { opacity: 0.9 } }} />
                       </Link>
