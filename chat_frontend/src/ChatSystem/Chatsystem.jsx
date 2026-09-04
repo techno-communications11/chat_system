@@ -2494,8 +2494,8 @@ export default function ChatSystem({ standalone = false, adminPage = false }) {
       <Box
         className="chat-shell"
         sx={{
-          height: standalone ? "100vh" : "calc(100vh - 48px)",
-          minHeight: standalone ? "100vh" : { xs: 0, md: 620 },
+          height: standalone ? "100dvh" : "calc(100dvh - 48px)",
+          minHeight: standalone ? "100dvh" : { xs: 0, md: 620 },
           display: "grid",
           gridTemplateColumns: { xs: "1fr", sm: "320px minmax(0, 1fr)", md: "380px minmax(0, 1fr)" },
           bgcolor: "var(--chat-canvas)",

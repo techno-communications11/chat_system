@@ -153,7 +153,7 @@ function TicketingTokenBridge({ children }) {
 
 function ChatPage({ adminPage = false }) {
   return (
-    <Box sx={{ height: "100vh", width: "100%", minWidth: 0, overflow: "hidden" }}>
+    <Box sx={{ height: "100dvh", width: "100%", minWidth: 0, overflow: "hidden" }}>
       <ChatSystem standalone adminPage={adminPage} />
     </Box>
   );

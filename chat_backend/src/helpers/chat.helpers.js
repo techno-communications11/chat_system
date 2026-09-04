@@ -434,8 +434,8 @@ const toReaction = (reaction) => ({
 const toMessage = (message) => ({
   id: String(message.id),
   message_id: String(message.id),
-  chatId: String(message.conversationId),
-  chat_id: String(message.conversationId),
+  chatId: String(message.conversation?.publicId || message.conversationId),
+  chat_id: String(message.conversation?.publicId || message.conversationId),
   text: message.deletedAt ? "This message was deleted" : message.text,
   replyTo: message.replyToMessageId ? String(message.replyToMessageId) : null,
   sender: message.sender ? toUser(message.sender) : null,

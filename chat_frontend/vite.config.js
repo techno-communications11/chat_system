@@ -9,6 +9,7 @@ export default defineConfig(({ mode }) => {
   const useHttps = env.VITE_DEV_HTTPS === "true";
 
   return {
+    base: "./",
     plugins: [react()],
     server: {
       host: env.VITE_DEV_HOST || "0.0.0.0",

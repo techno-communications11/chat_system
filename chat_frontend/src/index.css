@@ -70,6 +70,10 @@ button,
     overflow: hidden;
   }
 
+  body {
+    overscroll-behavior: none;
+  }
+
   .MuiPopover-paper,
   .MuiDialog-paper {
     max-width: calc(100vw - 24px);

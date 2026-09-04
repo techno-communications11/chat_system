@@ -1276,7 +1276,7 @@ export default function ChatWindow({
                 sx={{
                   position: "relative",
                   flexShrink: 0,
-                  width: { xs: 164, sm: "auto" },
+                  width: { xs: "auto", sm: "auto" },
                   maxWidth: "100%",
                   overflow: "visible",
                 }}
@@ -1364,7 +1364,7 @@ export default function ChatWindow({
                   disabled={callStarting}
                   onClick={() => onStartConversationCall?.("video")}
                 />
-                <Box sx={{ display: "block" }}>
+                <Box sx={{ display: { xs: "none", sm: "block" } }}>
                   <ToolBtn
                     title="Schedule call"
                     icon={<CalendarMonthIcon sx={{ fontSize: 17 }} />}
@@ -1838,18 +1838,20 @@ export default function ChatWindow({
                       }}
                     />
 
-                    <ToolBtn
-                      title="Bold"
-                      icon={<FormatBoldIcon sx={{ fontSize: 16 }} />}
-                      onPointerDown={(event) => event.preventDefault()}
-                      onClick={() => applyTextFormat("**")}
-                    />
-                    <ToolBtn
-                      title="Italic"
-                      icon={<FormatItalicIcon sx={{ fontSize: 16 }} />}
-                      onPointerDown={(event) => event.preventDefault()}
-                      onClick={() => applyTextFormat("*")}
-                    />
+                    <Box sx={{ display: { xs: "none", sm: "flex" }, gap: 0.25 }}>
+                      <ToolBtn
+                        title="Bold"
+                        icon={<FormatBoldIcon sx={{ fontSize: 16 }} />}
+                        onPointerDown={(event) => event.preventDefault()}
+                        onClick={() => applyTextFormat("**")}
+                      />
+                      <ToolBtn
+                        title="Italic"
+                        icon={<FormatItalicIcon sx={{ fontSize: 16 }} />}
+                        onPointerDown={(event) => event.preventDefault()}
+                        onClick={() => applyTextFormat("*")}
+                      />
+                    </Box>
                     {/* Mention picker popover */}
                     <Popover
                       open={mentionPickerOpen}

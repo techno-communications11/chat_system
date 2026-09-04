@@ -1,0 +1,19 @@
+{
+  "name": "Pingly Chat",
+  "short_name": "Pingly",
+  "description": "Pingly messaging and calls",
+  "start_url": "/chat-app",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f8f9fd",
+  "theme_color": "#6f2da8",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/pingly-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

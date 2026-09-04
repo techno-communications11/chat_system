@@ -107,6 +107,7 @@ export const searchChatMessages = async ({ actor, query = {} }) => {
     where,
     include: [
       { model: ChatIdentity, as: "sender" },
+      { model: ChatConversation, as: "conversation", attributes: ["publicId"] },
       {
         model: ChatMessageReaction,
         as: "reactions",

@@ -10,6 +10,7 @@
     "test": "node --test",
     "db:sync": "node scripts/syncDatabase.js",
     "db:reset": "node scripts/resetDatabase.js",
+    "db:seed-demo-users": "node scripts/seedDemoUsers.js",
     "db:normalize-identities": "node scripts/normalizeIdentityIds.js"
   },
   "dependencies": {

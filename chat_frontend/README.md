@@ -18,6 +18,23 @@ npm run dev
 
 Open http://localhost:5174/chat-app.
 
+## Desktop and mobile builds
+
+The React application can be packaged for desktop with Electron. The Android
+application is maintained separately in `../chat_mobile` using Expo:
+
+~~~bash
+npm run desktop:build
+npm run pwa:build
+~~~
+
+### JavaScript-only mobile installation
+
+If an APK is not required, deploy the frontend over HTTPS and install it from
+the browser menu using **Install app** or **Add to Home screen**. This PWA is
+the JavaScript-only Android and desktop version; it does not require Java,
+Android Studio, Gradle, or an APK build step.
+
 ~~~bash
 npm run dev
 npm run build
@@ -66,4 +83,3 @@ The app uses the existing auth/token integration and sends Authorization Bearer 
 | Old UI | Restart Vite or hard-refresh |
 
 See ../chat_backend/docs/API.md or http://localhost:4701/api-docs.
-
